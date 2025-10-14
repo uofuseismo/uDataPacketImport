@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package UDataPacketImport.GRPC;
+
+service BroadcastProxy
+{
+    /// Gets the currently available streams.
+    //rpc GetAvailableStreams(AvailableStreamsRequest) returns(AvailableStreamsResponse) {};
+    /// Subscribes to the incoming packets.
+    rpc Subscribe(SubscriptionRequest) returns(stream Packet) {};
+    /// Subscribes to all available streams.
+    //rpc SubscribeToAllStreams(SubscribeToAllStreamsRequest) returns(stream Packet) {};
+    /// Unsubscribes from all available streams.
+    //rpc UnsubscribeFromAllStreams(UnsubscribeFromAllStreamsRequest) returns(UnsubscribeFromAllStreamsResponse) {};
+    rpc Unsubscribe(UnsubscribeRequest) returns(UnsubscribeResponse) {};
+
+    /// Publishes streams to the proxy
+    rpc PublishPackets(stream Packet) returns(EndPublicationResponse) {};
+}
+
+// A sensors network code, station name, channel code, and location code
+// define a unique stream identifier.
+message StreamIdentifier
+{
+    // The network name - e.g., UU.
+    string network = 1;
+    // The station name - e.g., FORK.
+    string station = 2;
+    // The channel code - e.g., HHZ.
+    string channel = 3;
+    // The location code - e.g., 01.
+    optional string location_code = 4;
+}
+
+// Requests the available streams in the broadcast.
+message AvailableStreamsRequest
+{
+    // An optional message identifier. 
+    optional int64 request_identifier = 1;
+}
+
+// Subscribe to a specific set of streams.
+message SubscriptionRequest
+{
+   // The stream identifiers to which to subscribe.  These can be identified with a stream request.
+   repeated StreamIdentifier streams = 1;
+}
+
+// Request a subscription to all streams.
+message SubscribeRequest
+{
+}
+
+// Unsubscribe from all streams.
+message UnsubscribeRequest
+{
+}
+
+// A closing message for a stream publisher.
+message EndPublicationResponse
+{
+    // Number of packets sent to proxy front end.
+    uint64 packets_received = 1;
+    // Number of packets successfully propagated in proxy.
+    uint64 packets_published = 2; 
+}
+
+// Available streams.
+message AvailableStreamsResponse
+{
+    repeated StreamIdentifier streams = 1;
+    // An optional message identifier.
+    optional int64 request_identifier = 2;
+}
+
+message UnsubscribeResponse
+{
+    // The streams from which I have unsubscribed.
+    //repeated StreamIdentifier streams = 1;
+}
+ 
+// Defines a data packet amounts to a data packet identifier, start time,
+// sampling rate, and samples.
+message Packet
+{
+    // The packet identifier.
+    StreamIdentifier stream_identifier = 1;
+    // The packet start time (UTC) in microseconds since the epoch.
+    int64 start_time_mus = 2;
+    // The sampling rate in Hz.
+    double sampling_rate = 3;
+
+    // Defines the data type.
+    enum DataType
+    {
+        // The data type is unknown.  This can happen if there is no data.
+        Unknown = 0;
+        // The data is a vector of int32_t's stored in data32i.
+        Integer32 = 1;
+        // The data is a vector of doubles stored in data64f.
+        Double = 2;
+        // The data is a vector of floats stored in data32f. 
+        Float = 3;
+        // The data is a vector of int64_t's stored in data64i.
+        Integer64 = 4;
+    }
+    // The data type.
+    DataType data_type = 4;
+
+    // The double data.
+    repeated double data64f = 5;
+    // The int64_t data.
+    repeated int64 data64i  = 6;
+    // The int32_t data.
+    repeated int32 data32i  = 7;
+    // The float data.
+    repeated float data32f  = 8;
+}

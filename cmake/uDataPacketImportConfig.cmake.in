@@ -1,0 +1,34 @@
+# Time cmake module
+#
+# The following import targets are created
+#
+# ::
+#
+#   libuDataPacketImport-static
+#   libuDataPacketImport
+#
+# This module sets the following variables in your project::
+#
+#   uDataPacketImport_FOUND - true if the uDataPacketImport library was found on the system
+#   uDataPacketImport_INCLUDE_DIR - the directory containing uDataPacketImport headers
+#   uDataPacketImport_LIBRARY - the shared library
+#   uDataPacketImport_STATIC_LIBRARY - the static library
+
+@PACKAGE_INIT@
+
+if(NOT TARGET uDataPacketImport AND NOT TARGET uDataPacketImport-static)
+  include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
+
+  if (TARGET uDataPacketImport)
+    get_target_property(@PROJECT_NAME@_INCLUDE_DIR uDataPacketImport INTERFACE_INCLUDE_DIRECTORIES)
+  else ()
+    get_target_property(@PROJECT_NAME@_INCLUDE_DIR uDataPacketImport-static INTERFACE_INCLUDE_DIRECTORIES)
+  endif()
+
+  if (TARGET uDataPacketImport)
+    get_target_property(@PROJECT_NAME@_LIBRARY uDataPacketImport LOCATION)
+  endif()
+  if (TARGET uDataPacketImport-static)
+    get_target_property(@PROJECT_NAME@_STATIC_LIBRARY uDataPacketImport-static LOCATION)
+  endif()
+endif()
