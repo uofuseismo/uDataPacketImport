@@ -1,3 +1,4 @@
+#include <csignal>
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
@@ -18,12 +19,15 @@
 #include "uDataPacketImport/seedLink/streamSelector.hpp"
 #include "proto/dataPacketBroadcast.grpc.pb.h"
 #include "getNow.hpp"
+#include "loadStringFromFile.hpp"
 
 #define APPLICATION_NAME "uSEEDLinkBroadcast"
 #define MAX_QUEUE_SIZE 4096
 
 namespace
 {
+
+std::atomic<bool> mInterrupted{false};
 
 struct ProgramOptions
 {
@@ -32,7 +36,7 @@ struct ProgramOptions
     std::string applicationName{APPLICATION_NAME};
     std::string grpcHost;
     std::string grpcPublisherToken;
-    std::filesystem::path grpcClientKey;
+    std::string grpcClientCertificate;
 /*
     std::string openTelemetrySchema{OTEL_SCHEMA};
     std::string openTelemetryVersion{OTEL_VERSION};
@@ -56,12 +60,11 @@ struct ProgramOptions
 [[nodiscard]] std::pair<std::string, bool> 
 parseCommandLineOptions(int argc, char *argv[]);
 
-std::shared_ptr<grpc::Channel> createChannel(const ::ProgramOptions options);
+std::shared_ptr<grpc::Channel> createChannel(const ::ProgramOptions &options);
 
 [[nodiscard]] UDataPacketImport::SEEDLink::ClientOptions
 getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
                    const std::string &clientName);
-[[nodiscard]] std::string loadStringFromFile(const std::filesystem::path &path);
 void setVerbosityForSPDLOG(const int verbosity);
 
 ::ProgramOptions parseIniFile(const std::filesystem::path &iniFile);
@@ -93,9 +96,10 @@ class Publisher
 {
 public:
     explicit Publisher(const ::ProgramOptions options) :
-        mPublisherQueue(options.maxPublisherQueueSize)
+        mPublisherQueue(options.maxPublisherQueueSize),
+        mOptions(options)
     {
-        mChannel = ::createChannel(options);
+//        mChannel = ::createChannel(options);
 
         mSEEDLinkClient
             = std::make_unique<UDataPacketImport::SEEDLink::Client>
@@ -108,16 +112,181 @@ public:
     {
         stop();
         mKeepRunning = true;
-        mPublisherThread = std::thread(&::Publisher::publishPackets, this);
+        //mPublisherThread = std::thread(&::Publisher::publishPacketsAsynchronously, this);
+        mPublisherThread = std::thread(&::Publisher::publishPacketsSynchronously, this);
+        //mSEEDLinkClientThread = std::thread(&::Publisher::runSEEDLinkClient, this);
+        mSEEDLinkClient->start();
     }
+/*
+    void runSEEDLinkClient()
+    {
+        while (mKeepRunning)
+        {
+            mSEEDLinkClient->stop();
+            mSEEDLinkClient->start();
+            if (mKeepRunning)
+            {
+                spdlog::info("Attempting to restart SEEDLink client");
+            }
+            else
+            {
+                spdlog::info("SEEDLink client thread exiting");
+                break;
+            }
+        } 
+    }
+*/
 
     void stop()
     {
         mKeepRunning = false;
+        mSEEDLinkClient->stop();
+        //if (mSEEDLinkClientThread.joinable()){mSEEDLinkClientThread.join();}
         if (mPublisherThread.joinable()){mPublisherThread.join();}
     }
+
+    void publishPacketsSynchronously()
+    {
+        //mChannel = ::createChannel(mOptions);
+
+        std::vector<std::chrono::seconds> retryInterval;
+        retryInterval.push_back(std::chrono::seconds {5});
+        retryInterval.push_back(std::chrono::seconds {10});
+        retryInterval.push_back(std::chrono::seconds {20});
+
+
+        int iReconnect{0};
+        while (true)
+        {
+
+//  grpc::SslCredentialsOptions ssl_options;
+//  ssl_options.pem_root_certs = mOptions.grpcClientCertificate;
+//  auto channel = grpc::CreateChannel("localhost:50040",
+//                                     grpc::SslCredentials(ssl_options));
+
+            auto channel = ::createChannel(mOptions);
+            grpc::ClientContext context;
+            context.set_wait_for_ready(false);
+
+            auto stub = UDataPacketImport::GRPC::BroadcastProxy::NewStub(channel);
+
+            UDataPacketImport::GRPC::EndPublicationResponse response;
+            std::unique_ptr<grpc::ClientWriter<UDataPacketImport::GRPC::Packet>>
+                 writer(stub->PublishPackets(&context, &response));
+            bool doReconnect{true};
+            std::this_thread::sleep_for(std::chrono::milliseconds {100});
+            if (channel->GetState(false) == GRPC_CHANNEL_READY)
+            {
+                iReconnect = 0;
+                // Keep propagating packets
+                while (mKeepRunning)
+                {
+                    UDataPacketImport::GRPC::Packet packet;
+                    //spdlog::info("hey packet..." + std::to_string(mChannel->GetState(false)));
+                    if (mPublisherQueue.try_dequeue(packet))
+                    {
+                        auto now = ::getNow();
+                        std::chrono::microseconds startTime(packet.start_time_mus());
+                        if (startTime < now - std::chrono::seconds {180*86400})
+                        {
+                            spdlog::warn("Will not propagate packet - has expired data");
+                            continue;
+                        }
+                        std::chrono::microseconds endTime;
+                        try
+                        {
+                            endTime = UDataPacketImport::getEndTime(packet);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            spdlog::warn("Failed to get packet end time");
+                            continue;
+                        }
+                        if (endTime > now)
+                        {
+                            spdlog::warn("Will not propagate packet - has future data");
+                            continue;
+                        }
+                        if (!writer->Write(packet))
+                        {
+                            spdlog::warn("Failed to write packet!");
+                            break; // Some type of error occurred - figure it out
+                        }
+                    }
+                    else
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds {50});
+                    }
+                }
+                // Finish up
+                writer->WritesDone();
+                auto status = writer->Finish();
+                if (status.ok())
+                {
+                    doReconnect = false;
+                    if (mKeepRunning)
+                    {
+                        spdlog::warn("Writer successfully finished - but why?");
+                        issueStopNotification();
+                    }
+                    else
+                    {
+                        spdlog::info("Writer successfully haulted publication");
+                    }
+                    break;
+                }
+                else
+                {
+                    // Channel blinked out
+                    if (status.error_code() == grpc::UNAVAILABLE)
+                    {
+                        doReconnect = true;
+                    }
+                    else
+                    {
+                        if (status.error_code() == grpc::UNAUTHENTICATED)
+                        {
+                            spdlog::critical(
+                                "Token required to publish packets");
+                        }
+                        else
+                        {
+                            spdlog::critical("Unhandled grpc error: "
+                                        + std::string {status.error_message()});
+                        }
+                        doReconnect = false;
+                        if (mKeepRunning){issueStopNotification();}
+                        break;
+                    }
+                }
+            } // End check on channel being ready
+            if (doReconnect)
+            {
+                if (!mKeepRunning){break;}
+                if (iReconnect < retryInterval.size())
+                {
+                    auto timeOut = retryInterval.at(iReconnect); 
+                    spdlog::info("Attempting reconnect in "
+                               + std::to_string(timeOut.count()) + " (s)");
+                    std::this_thread::sleep_for(timeOut);
+                    iReconnect = iReconnect + 1;
+                    continue;
+                }
+                else
+                {
+                    spdlog::error("Publisher reconnect limit exceeded");
+                    if (mKeepRunning){issueStopNotification();}
+                    break;
+                }
+            }
+            spdlog::info("Not sure why i'm here");
+            if (mKeepRunning){issueStopNotification();}
+            break;
+        } // Loop on retries
+    }
  
-    void publishPackets()
+/*
+    void publishPacketsAsynchronously()
     {
         class AsyncPublisher : public grpc::ClientWriteReactor<UDataPacketImport::GRPC::Packet>
         {
@@ -128,6 +297,7 @@ public:
                 mPublisherQueue(publisherQueue),
                 mKeepRunningPublisher(keepRunning)
             {
+                mContext.set_wait_for_ready(true);
                 stub->async()->PublishPackets(&mContext, &mAPIResponse, this);
                 // The route client uses this b/c some StartsWrites were invoked
                 // indirectly from a delayed lambda.  I'll try it for now.
@@ -167,6 +337,7 @@ public:
                     UDataPacketImport::GRPC::Packet packet;
                     if (mPublisherQueue->try_dequeue(packet))
                     {
+                        spdlog::info("Submitting packet");
                         StartWrite(&packet);
                     }
                     else
@@ -217,6 +388,7 @@ public:
             spdlog::error("Packet publication RPC failed");
         }
     }
+*/
     /// Callback that propagates packets to the publisher thread
     void inputPacketsToQueueCallback(
         std::vector<UDataPacketImport::Packet> &&packets)
@@ -298,7 +470,62 @@ public:
         }
         */
     }
+    /// Place for the main thread to sleep until someone wakes it up.
+    void handleMainThread()
+    {   
+        spdlog::debug("Main thread entering waiting loop");
+        catchSignals();
+        {
+            while (!mStopRequested)
+            {
+                if (mInterrupted)
+                {
+                    spdlog::info("SIGINT/SIGTERM signal received!");
+                    mStopRequested = true;
+                    break;
+                }
+                std::unique_lock<std::mutex> lock(mStopMutex);
+                mStopCondition.wait_for(lock,
+                                        std::chrono::milliseconds {100},
+                                        [this]
+                                        {
+                                              return mStopRequested;
+                                        });
+                lock.unlock();
+            }
+        }
+        if (mStopRequested) 
+        {
+            spdlog::debug("Stop request received.  Terminating proxy...");
+            stop();
+        }
+    }   
+    /// Handles sigterm and sigint
+    static void signalHandler(const int )
+    {   
+        mInterrupted = true;
+    }   
+    static void catchSignals()
+    {   
+        struct sigaction action;
+        action.sa_handler = signalHandler;
+        action.sa_flags = 0;
+        sigemptyset(&action.sa_mask);
+        sigaction(SIGINT,  &action, NULL);
+        sigaction(SIGTERM, &action, NULL);
+    }
+    /// Issues a stop notification 
+    void issueStopNotification()
+    {   
+        spdlog::debug("Issuing stop notification...");
+        {
+            std::lock_guard<std::mutex> lock(mStopMutex);
+            mStopRequested = true;
+        }
+        mStopCondition.notify_one();
+    }   
     // Single channel-single reader
+    std::thread mSEEDLinkClientThread;
     std::thread mPublisherThread;
     std::unique_ptr<UDataPacketImport::SEEDLink::Client> mSEEDLinkClient{nullptr};
     moodycamel::ConcurrentQueue<UDataPacketImport::GRPC::Packet> mPublisherQueue;
@@ -308,64 +535,14 @@ public:
         std::bind(&::Publisher::inputPacketsToQueueCallback, this,
                   std::placeholders::_1)
     };
-    std::shared_ptr<grpc::Channel> mChannel{nullptr};
+    ::ProgramOptions mOptions;
+    //std::shared_ptr<grpc::Channel> mChannel{nullptr};
+    mutable std::mutex mStopMutex;
     size_t mMaxPublisherQueueSize{MAX_QUEUE_SIZE};
+    std::condition_variable mStopCondition;
     std::atomic<bool> mKeepRunning{true};
+    bool mStopRequested{false};
 };
-
-std::shared_ptr<grpc::Channel> createChannel(const ::ProgramOptions options)
-{
-    std::shared_ptr<grpc::Channel> channel{nullptr};
-    if (options.grpcPublisherToken.empty())
-    {
-        if (options.grpcClientKey.empty())
-        {
-            spdlog::info("Creating non-secured client without token");
-            channel
-                = grpc::CreateChannel(options.grpcHost, 
-                                      grpc::InsecureChannelCredentials());
-        }
-        else
-        {
-            spdlog::info("Creating secured client without token");
-            grpc::SslCredentialsOptions sslOptions;
-            sslOptions.pem_root_certs
-                = ::loadStringFromFile(options.grpcClientKey);
-            channel
-                = grpc::CreateChannel(options.grpcHost, 
-                                      grpc::SslCredentials(sslOptions));
-        }
-    }
-    else
-    {
-        auto callCredentials = grpc::MetadataCredentialsFromPlugin(
-            std::unique_ptr<grpc::MetadataCredentialsPlugin> (
-               new CustomAuthenticator(options.grpcPublisherToken)));
-        if (options.grpcClientKey.empty())
-        {
-            spdlog::info("Creating non-secured client with a token");
-            spdlog::warn("Token can be intercepted in flight");
-            auto channelCredentials
-                = grpc::CompositeChannelCredentials(
-                      grpc::InsecureChannelCredentials(),
-                      callCredentials);
-            channel = grpc::CreateChannel(options.grpcHost, channelCredentials);
-        }
-        else
-        {
-            spdlog::info("Creating secured client with token");
-            grpc::SslCredentialsOptions sslOptions;
-            sslOptions.pem_root_certs 
-                = ::loadStringFromFile(options.grpcClientKey);
-            auto channelCredentials
-                = grpc::CompositeChannelCredentials(
-                      grpc::SslCredentials(sslOptions),
-                      callCredentials);
-            channel = grpc::CreateChannel(options.grpcHost, channelCredentials);
-        }
-    }
-    return channel;
-}
 
 int main(int argc, char *argv[])
 {
@@ -396,6 +573,29 @@ int main(int argc, char *argv[])
     }
     ::setVerbosityForSPDLOG(programOptions.verbosity);
 
+    std::unique_ptr<::Publisher> publisher{nullptr};
+    try
+    {
+        publisher = std::make_unique<::Publisher> (programOptions);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::critical("Failed to create publisher; failed with "
+                       + std::string {e.what()});
+        return EXIT_FAILURE;
+    }
+
+    try
+    {
+        publisher->start();
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::critical("Failed to run publisher; failed with "
+                       + std::string {e.what()});
+        return EXIT_FAILURE;
+    }
+    publisher->handleMainThread();
 
     return EXIT_SUCCESS;
 }
@@ -405,6 +605,95 @@ int main(int argc, char *argv[])
 ///--------------------------------------------------------------------------///
 namespace
 {
+
+std::shared_ptr<grpc::Channel> createChannel(const ::ProgramOptions &options)
+{
+    auto address = options.grpcHost + ":" + std::to_string(options.grpcPort);
+/*
+  grpc::SslCredentialsOptions ssl_options;
+  ssl_options.pem_root_certs = options.grpcClientCertificate;
+  return grpc::CreateChannel(address, //"localhost:50040",
+                             grpc::SslCredentials(ssl_options));
+*/
+/*
+    std::string retryPolicy =
+    "{\"methodConfig\" : [{"
+    "   \"name\" : [{\"service\": \"UDataPacketImport.GRPC.BroadcastPackets.PublishPackets\"}],"
+    "   \"waitForReady\": true,"
+    "   \"retryPolicy\": {"
+    "     \"maxAttempts\": 4,"
+    "     \"initialBackoff\": \"1s\","
+    "     \"maxBackoff\": \"120s\","
+    "     \"backoffMultiplier\": 1.0,"
+    "     \"retryableStatusCodes\": [\"UNAVAILABLE\"]"
+    "    }"
+    "}]}";
+//std::cout << retryPolicy << std::endl;
+    grpc::ChannelArguments retryArguments;
+    //retryArguments.SetString(GRPC_ARG_SERVICE_CONFIG);
+    //retryArguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 2000); // 2s
+    //retryArguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,   120000); // 120s
+    //retryArguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,    10000); // 10s
+    //retryArguments.SetServiceConfigJSON(retryPolicy);
+*/
+    //auto address = options.grpcHost + ":" + std::to_string(options.grpcPort);
+    //std::shared_ptr<grpc::Channel> channel{nullptr};
+    if (options.grpcPublisherToken.empty())
+    {   
+        if (options.grpcClientCertificate.empty())
+        {
+            spdlog::info("Creating non-secured client without token at "
+                       + address);
+            return grpc::CreateChannel(address,
+                                       grpc::InsecureChannelCredentials());
+//                                            retryArguments);
+        }
+        else
+        {
+            spdlog::info("Creating secured client without token at "
+                       + address);
+            grpc::SslCredentialsOptions sslOptions;
+            sslOptions.pem_root_certs = options.grpcClientCertificate;
+            return grpc::CreateChannel(address,
+                                       grpc::SslCredentials(sslOptions));
+        }
+    }   
+    else
+    {
+        auto callCredentials = grpc::MetadataCredentialsFromPlugin(
+            std::unique_ptr<grpc::MetadataCredentialsPlugin> (
+               new CustomAuthenticator(options.grpcPublisherToken)));
+        if (options.grpcClientCertificate.empty())
+        {
+            throw std::runtime_error("gRPC forbids tokens without encyption");
+            /*
+            spdlog::info("Creating non-secured client with a token at "
+                       + address);
+            spdlog::warn("Token can be intercepted in flight");
+            auto channelCredentials
+                = grpc::CompositeChannelCredentials(
+                      grpc::InsecureChannelCredentials(),
+                      callCredentials);
+            return grpc::CreateChannel(address, channelCredentials); //, retryArguments); CustomChannel
+            */
+        }
+        else
+        { 
+            spdlog::info("Creating secured client with token at "
+                       + address);
+            grpc::SslCredentialsOptions sslOptions;
+            sslOptions.pem_root_certs = options.grpcClientCertificate;
+            auto channelCredentials
+                = grpc::CompositeChannelCredentials(
+                      grpc::SslCredentials(sslOptions),
+                      callCredentials);
+            return grpc::CreateChannel(address, channelCredentials);
+        }
+    }
+    throw std::runtime_error("Uhandled channel creation route");
+}
+
+
 /// Read the program options from the command line
 std::pair<std::string, bool> parseCommandLineOptions(int argc, char *argv[])
 {
@@ -535,22 +824,6 @@ getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
     return clientOptions;
 }
 
-std::string loadStringFromFile(const std::filesystem::path &path)
-{
-    std::string result;
-    if (std::filesystem::exists(path)){return result;}
-    std::ifstream file(path);
-    if (!file.is_open())
-    {   
-        throw std::runtime_error("Failed to open " + path.string());
-    }
-    std::stringstream sstr;
-    sstr << file.rdbuf();
-    file.close(); 
-    result = sstr.str();
-    return result;
-}
-
 ::ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
 {   
     ::ProgramOptions options;
@@ -588,24 +861,22 @@ std::string loadStringFromFile(const std::filesystem::path &path)
     grpcClientCertificate
         = propertyTree.get<std::string> ("gRPC.clientCertificate",
                                          grpcClientCertificate);
-/*
-    if (!grpcClientKey.empty() && !grpcClientCertificate.empty())
+    if (!grpcClientCertificate.empty())
     {
-        if (!std::filesystem::exists(grpcClientKey))
-        {
-            throw std::invalid_argument("gRPC client key file "
-                                      + grpcClientKey + " does not exist");
-        }
         if (!std::filesystem::exists(grpcClientCertificate))
         {
             throw std::invalid_argument("gRPC client certificate file "
                                       + grpcClientCertificate
                                       + " does not exist");
         }
-        options.grpcClientKey = grpcClientKey;
-        options.grpcClientCertificate = grpcClientCertificate;
+        options.grpcClientCertificate = ::loadStringFromFile(grpcClientCertificate);
     }
-*/
+    if (!options.grpcPublisherToken.empty() &&
+        options.grpcClientCertificate.empty())
+    {
+        throw std::invalid_argument("Must set client certificate to use a token");
+    }
+
 
     // SEEDLink properties
     if (propertyTree.get_optional<std::string> ("SEEDLink.address"))
