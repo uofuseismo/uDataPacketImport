@@ -2,10 +2,11 @@ syntax = "proto3";
 
 package UDataPacketImport.GRPC;
 
+/*
 service BroadcastProxy
 {
     /// Gets the currently available streams.
-    //rpc GetAvailableStreams(AvailableStreamsRequest) returns(AvailableStreamsResponse) {};
+    rpc GetAvailableStreams(AvailableStreamsRequest) returns(AvailableStreamsResponse) {};
     /// Subscribes to the incoming packets.
     rpc Subscribe(SubscriptionRequest) returns(stream Packet) {};
     /// Subscribes to all available streams.
@@ -16,6 +17,29 @@ service BroadcastProxy
 
     /// Publishes streams to the proxy
     rpc PublishPackets(stream Packet) returns(EndPublicationResponse) {};
+}
+*/
+
+/// This broadcasts data read from SEEDLink.  Effectively, what is read is
+/// immediately forwarded to the consumers.
+service SEEDLinkBroadcast
+{
+    /// Subscribes to the incoming packets.
+    rpc Subscribe(SubscribeToAllStreamsRequest) returns(stream Packet) {};
+    /// Unsubscirbes from the ihe incoming packet stream.
+    rpc Unsubscribe(UnsubscribeFromAllStreamsRequest) returns(UnsubscribeFromAllStreamsResponse);
+}
+
+/// This is a more nuanced broacast for supporting real-time applications.  As
+/// such this utility can attempt to suppress wonky data - future, latent,
+/// overlapping, and duplicate data. 
+service RealTimeBroadcast
+{
+    /// Gets the currently available streams.
+    rpc GetAvailableStreams(AvailableStreamsRequest) returns(AvailableStreamsResponse) {}; 
+    /// Subscribes to all incoming streams.
+    rpc SubscribeToAllStreams(SubscriptionRequest) returns(stream Packet) {};
+ 
 }
 
 // A sensors network code, station name, channel code, and location code
@@ -35,8 +59,6 @@ message StreamIdentifier
 // Requests the available streams in the broadcast.
 message AvailableStreamsRequest
 {
-    // An optional message identifier. 
-    optional int64 request_identifier = 1;
 }
 
 // Subscribe to a specific set of streams.
@@ -44,6 +66,23 @@ message SubscriptionRequest
 {
    // The stream identifiers to which to subscribe.  These can be identified with a stream request.
    repeated StreamIdentifier streams = 1;
+}
+
+// Subscribes to all available streams.
+message SubscribeToAllStreamsRequest
+{
+}
+
+// Unsubscribes from all available streams.
+message UnsubscribeFromAllStreamsRequest
+{
+}
+
+// Response to unsubscribing form all
+message UnsubscribeFromAllStreamsResponse
+{
+    // The number of packets read while subscribing
+    uint64 packets_read = 1;
 }
 
 // Request a subscription to all streams.
@@ -68,9 +107,8 @@ message EndPublicationResponse
 // Available streams.
 message AvailableStreamsResponse
 {
-    repeated StreamIdentifier streams = 1;
-    // An optional message identifier.
-    optional int64 request_identifier = 2;
+    // The available streams.
+    repeated StreamIdentifier stream_identifiers = 1;
 }
 
 message UnsubscribeResponse

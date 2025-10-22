@@ -52,6 +52,8 @@ set(LIBRARY_SRC proto/dataPacketBroadcast.proto
     src/seedLink/clientOptions.cpp
     src/seedLink/streamSelector.cpp
     src/seedLink/client.cpp
+    src/seedLink/subscriber.cpp
+    src/seedLink/subscriberOptions.cpp
     #src/client.cpp
     #src/station.cpp
     #src/database.cpp)
@@ -79,6 +81,8 @@ target_sources(uDataPacketImport
                   include/uDataPacketImport/grpc/client.hpp
                   include/uDataPacketImport/seedLink/clientOptions.hpp
                   include/uDataPacketImport/seedLink/streamSelector.hpp
+                  include/uDataPacketImport/seedLink/subscriber.hpp
+                  include/uDataPacketImport/seedLink/subscriberOptions.hpp
                )
 set_target_properties(uDataPacketImport PROPERTIES
                       CXX_STANDARD 20
@@ -86,6 +90,7 @@ set_target_properties(uDataPacketImport PROPERTIES
                       CXX_EXTENSIONS NO)
 target_link_libraries(uDataPacketImport PUBLIC gRPC::grpc gRPC::grpc++
                       PRIVATE protobuf::libprotobuf spdlog::spdlog_header_only
+                              readerwriterqueue
                               MiniSEED::MiniSEED SEEDLink::SEEDLink)
 target_include_directories(uDataPacketImport
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
@@ -97,7 +102,10 @@ protobuf_generate(TARGET uDataPacketImport
                   PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
                   PLUGIN_OPTIONS generate_mock_code=true
                   GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc)
-add_executable(uSEEDLinkBroadcast src/seedLink/broadcast.cpp)
+
+add_executable(uSEEDLinkBroadcast
+               src/seedLink/importService.cpp)
+#               src/seedLink/broadcast.cpp)
 set_target_properties(uSEEDLinkBroadcast PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
@@ -112,25 +120,45 @@ target_link_libraries(uSEEDLinkBroadcast
                               gRPC::grpc++_reflection
                               gRPC::grpcpp_otel_plugin
                               uDataPacketImport spdlog::spdlog_header_only
-                              concurrentqueue
+                              readerwriterqueue
                               Boost::boost Boost::program_options Threads::Threads)
 
-add_executable(uDataPacketGRPCProxy src/proxy.cpp)
-set_target_properties(uDataPacketGRPCProxy PROPERTIES
+add_executable(uPacketSanitizer
+               src/sanitizer/sanitizer.cpp)
+set_target_properties(uPacketSanitizer PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
                       CXX_EXTENSIONS NO)
-target_include_directories(uDataPacketGRPCProxy
+target_include_directories(uPacketSanitizer
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>)
-target_link_libraries(uDataPacketGRPCProxy
+target_link_libraries(uPacketSanitizer
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
                               gRPC::grpc++_reflection
                               gRPC::grpcpp_otel_plugin
                               uDataPacketImport spdlog::spdlog_header_only
-                              concurrentqueue readerwriterqueue
+                              #readerwriterqueue
                               Boost::boost Boost::program_options Threads::Threads)
+
+
+#add_executable(uDataPacketGRPCProxy src/proxy.cpp)
+#set_target_properties(uDataPacketGRPCProxy PROPERTIES
+#                      CXX_STANDARD 20
+#                      CXX_STANDARD_REQUIRED YES
+#                      CXX_EXTENSIONS NO)
+#target_include_directories(uDataPacketGRPCProxy
+#                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+#                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>)
+#target_link_libraries(uDataPacketGRPCProxy
+#                      PRIVATE gRPC::grpc
+#                              gRPC::grpc++
+#                              gRPC::grpc++_reflection
+#                              gRPC::grpcpp_otel_plugin
+#                              uDataPacketImport spdlog::spdlog_header_only
+#                              concurrentqueue readerwriterqueue
+#                              Boost::boost Boost::program_options Threads::Threads)
 
 
 ##########################################################################################
@@ -175,9 +203,9 @@ install(TARGETS uDataPacketImport
         FILE_SET HEADERS
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT libraries)
-#install(TARGETS uSEEDLinkServer
-#        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-#        COMPONENT applications)
+install(TARGETS uSEEDLinkBroadcast uPacketSanitizer
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT applications)
 export(EXPORT ${PROJECT_NAME}-targets
        FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
 install(EXPORT ${PROJECT_NAME}-targets
@@ -199,7 +227,7 @@ if (${BUILD_FOR_DEBIAN})
                      COMMENT "Creating deb file for ${PROJECT_NAME}"
                      COMMAND ${CMAKE_CPACK_COMMAND} -G DEB 
                      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
-   add_dependencies(${PROJECT_NAME}-deb uSEEDLinkBroadcast)
+   add_dependencies(${PROJECT_NAME}-deb uSEEDLinkBroadcast uPacketSanitizer)
    find_program(buildah_EXECUTABLE buildah)
    if (buildah_EXECUTABLE)
       add_custom_target(buildah
