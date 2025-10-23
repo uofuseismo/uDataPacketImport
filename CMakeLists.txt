@@ -49,6 +49,8 @@ set(LIBRARY_SRC proto/dataPacketBroadcast.proto
     src/streamIdentifier.cpp
     src/packet.cpp
     src/client.cpp 
+    src/sanitizer/expiredPacketDetector.cpp
+    src/sanitizer/futurePacketDetector.cpp
     src/seedLink/clientOptions.cpp
     src/seedLink/streamSelector.cpp
     src/seedLink/client.cpp
@@ -94,7 +96,8 @@ target_link_libraries(uDataPacketImport PUBLIC gRPC::grpc gRPC::grpc++
                               MiniSEED::MiniSEED SEEDLink::SEEDLink)
 target_include_directories(uDataPacketImport
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>)
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PUBLIC  $<INSTALL_INTERFACE:include>)
 protobuf_generate(TARGET uDataPacketImport
                   LANGUAGE cpp)
 protobuf_generate(TARGET uDataPacketImport
@@ -105,7 +108,6 @@ protobuf_generate(TARGET uDataPacketImport
 
 add_executable(uSEEDLinkBroadcast
                src/seedLink/importService.cpp)
-#               src/seedLink/broadcast.cpp)
 set_target_properties(uSEEDLinkBroadcast PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
@@ -206,9 +208,10 @@ install(TARGETS uDataPacketImport
 install(TARGETS uSEEDLinkBroadcast uPacketSanitizer
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT applications)
-export(EXPORT ${PROJECT_NAME}-targets
-       FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
+#export(EXPORT ${PROJECT_NAME}-targets
+#       FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
 install(EXPORT ${PROJECT_NAME}-targets
+        NAMESPACE ${PROJECT_NAME}::
         FILE ${PROJECT_NAME}Targets.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 install(FILES
