@@ -71,6 +71,16 @@ FuturePacketDetectorOptions::operator=(
 }
 
 /// Max future time
+void FuturePacketDetectorOptions::setMaxFutureTime(
+    const std::chrono::microseconds &duration)
+{
+    if (duration.count() < 0)
+    {
+        spdlog::warn("Future time is negative");
+    } 
+    pImpl->mMaxFutureTime = duration;
+}
+
 std::chrono::microseconds
     FuturePacketDetectorOptions::getMaxFutureTime() const noexcept
 {
@@ -78,6 +88,16 @@ std::chrono::microseconds
 }
 
 /// Logging interval
+void FuturePacketDetectorOptions::setLogBadDataInterval(
+    const std::chrono::seconds &interval) noexcept
+{
+    pImpl->mLogBadDataInterval = interval;
+    if (interval.count() < 0)
+    {
+        pImpl->mLogBadDataInterval = std::chrono::seconds {-1};
+    }
+}
+
 std::chrono::seconds
     FuturePacketDetectorOptions::getLogBadDataInterval() const noexcept
 {
@@ -103,10 +123,10 @@ public:
     {
         // This might be okay if you really want to account for telemetry
         // lags.  But that's a dangerous game so I'll let the user know.
-        if (mMaxFutureTime.count() < 0)
-        {
-            spdlog::warn("Max future time is negative");
-        }
+        //if (mMaxFutureTime.count() < 0)
+        //{
+        //    spdlog::warn("Max future time is negative");
+        //}
         if (mLogBadDataInterval.count() >= 0)
         {
             mLogBadData = true;
@@ -193,7 +213,7 @@ public:
         {
             if (!mFutureChannels.empty())
             {
-                std::string message{"Future data detected for: "};
+                std::string message{"Future data detected for:"};
                 for (const auto &channel : mFutureChannels)
                 {
                     message = message + " " + channel;

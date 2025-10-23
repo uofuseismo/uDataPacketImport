@@ -33,7 +33,7 @@ namespace
 class ExpiredPacketDetectorOptions::ExpiredPacketDetectorOptionsImpl
 {
 public:
-    std::chrono::microseconds mMaxExpiredTime{std::chrono::seconds {120}};
+    std::chrono::microseconds mMaxExpiredTime{std::chrono::minutes {5}};
     std::chrono::seconds mLogBadDataInterval{3600};
 };
 
@@ -71,6 +71,16 @@ ExpiredPacketDetectorOptions::operator=(
 }
 
 /// Max expired time
+void ExpiredPacketDetectorOptions::setMaxExpiredTime(
+    const std::chrono::microseconds &duration)
+{
+    if (duration.count() <= 0)
+    {   
+        throw std::invalid_argument("Expired time must be positive");
+    }   
+    pImpl->mMaxExpiredTime = duration;
+}
+
 std::chrono::microseconds
     ExpiredPacketDetectorOptions::getMaxExpiredTime() const noexcept
 {
@@ -78,6 +88,16 @@ std::chrono::microseconds
 }
 
 /// Logging interval
+void ExpiredPacketDetectorOptions::setLogBadDataInterval(
+    const std::chrono::seconds &interval) noexcept
+{
+    pImpl->mLogBadDataInterval = interval;
+    if (interval.count() < 0)
+    {   
+        pImpl->mLogBadDataInterval = std::chrono::seconds {-1};
+    }   
+}
+
 std::chrono::seconds
     ExpiredPacketDetectorOptions::getLogBadDataInterval() const noexcept
 {
@@ -191,7 +211,7 @@ public:
         {
             if (!mExpiredChannels.empty())
             {
-                std::string message{"Expired data detected for: "};
+                std::string message{"Expired data detected for:"};
                 for (const auto &channel : mExpiredChannels)
                 {
                     message = message + " " + channel;
@@ -221,7 +241,7 @@ public:
     mutable std::mutex mMutex;
     ExpiredPacketDetectorOptions mOptions;
     std::set<std::string> mExpiredChannels;
-    std::chrono::microseconds mMaxExpiredTime{std::chrono::seconds {120}};
+    std::chrono::microseconds mMaxExpiredTime{std::chrono::minutes {5}};
     std::chrono::seconds mLastLogTime{0};
     std::chrono::seconds mLogBadDataInterval{3600};
     bool mLogBadData{true};

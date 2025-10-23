@@ -169,7 +169,8 @@ target_link_libraries(uPacketSanitizer
 
 add_executable(unitTests 
                testing/packet.cpp
-               testing/seedLink.cpp)
+               testing/seedLink.cpp
+               testing/sanitizer.cpp)
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 

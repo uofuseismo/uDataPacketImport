@@ -14,6 +14,10 @@ namespace UDataPacketImport::GRPC
 namespace UDataPacketImport::Sanitizer
 {
 
+/// @class ExpiredPacketDetectorOptions expiredPacketDetectorOptions.hpp
+/// @brief Tests whether or not a packet contains data that is too latent.
+/// @copyright Ben Baker (University of Utah) distributed under the MIT NO AI
+///            license.
 class ExpiredPacketDetectorOptions
 {
 public:
@@ -24,12 +28,22 @@ public:
     /// @brief Move constructor.
     ExpiredPacketDetectorOptions(ExpiredPacketDetectorOptions &&options) noexcept;
 
+    /// @brief Sets the max amount of time between now and the earliest sample.
+    /// @param[in] maxExpiredTime  The maximum amount of time between now and
+    ///                            the packet start time.
+    /// @throws std::invalid_argument if this is not positive.
+    void setMaxExpiredTime(const std::chrono::microseconds &maxExpiredTime);
     /// @result If any sample in the packet has a time that precees the current
     ///         time minus getMaxExpiredTime() then the packet is rejected.
+    /// @note By default this rejects data older than 5 minutes from now.
     [[nodiscard]] std::chrono::microseconds getMaxExpiredTime() const noexcept;
    
+    /// @brief Sets the interval at which to log expired data.
+    /// @param[in] logInterval  The interval at which to log data. 
+    /// @note Setting this to a negative value disables logging.
+    void setLogBadDataInterval(const std::chrono::seconds &logInterval) noexcept;
     /// @result Data streams appearing to have expired data are logged at this
-    ///         interval.
+    ///         interval.  By default bad data is logged every hour.
     [[nodiscard]] std::chrono::seconds getLogBadDataInterval() const noexcept;
  
     /// @brief Destructor.
@@ -46,9 +60,9 @@ private:
 }
 namespace UDataPacketImport::Sanitizer
 {
-/// @class ExpiredPacketDetector futurePacketDetector.hpp
-/// @brief Tests whether or not a packet contains data from the future.  This
-///        indicates that there is a timing error.
+/// @class ExpiredPacketDetector expiredPacketDetector.hpp
+/// @brief Tests whether or not a packet contains data that is too latent.
+///        This can be indicitave of a a timing error or a backfill.
 /// @copyright Ben Baker (University of Utah) distributed under the MIT NO AI
 ///            license.
 class ExpiredPacketDetector
