@@ -1,5 +1,5 @@
 #include <string>
-#include <algorithm>
+#include <chrono>
 #include "uDataPacketImport/seedLink/subscriberOptions.hpp"
 
 using namespace UDataPacketImport::SEEDLink;
@@ -8,6 +8,14 @@ class SubscriberOptions::SubscriberOptionsImpl
 {
 public:
     std::string mAddress;
+    std::string mCertificate;
+    std::string mToken;
+    std::vector<std::chrono::seconds> mReconnectSchedule
+    {
+        std::chrono::seconds {5},
+        std::chrono::seconds {15},
+        std::chrono::seconds {60}
+    };
 };
 
 /// Constructor
@@ -67,6 +75,42 @@ std::string SubscriberOptions::getAddress() const
 bool SubscriberOptions::hasAddress() const noexcept
 {
     return !pImpl->mAddress.empty();
+}
+
+/// Certificate
+void SubscriberOptions::setCertificate(const std::string &certificate)
+{
+    if (certificate.empty())
+    {
+        throw std::invalid_argument("Certificate is empty");
+    }
+    pImpl->mCertificate = certificate;
+}
+
+std::optional<std::string> SubscriberOptions::getCertificate() const noexcept
+{
+    return !pImpl->mCertificate.empty() ?
+           std::optional<std::string> (pImpl->mCertificate) : std::nullopt;
+}
+
+/// Token
+void SubscriberOptions::setToken(const std::string &token)
+{
+    if (token.empty()){throw std::invalid_argument("Token is empty");}
+    pImpl->mToken = token;
+}
+
+std::optional<std::string> SubscriberOptions::getToken() const noexcept
+{
+    return !pImpl->mToken.empty() ?
+           std::optional<std::string> (pImpl->mToken) : std::nullopt;
+}
+
+/// Reconnect interval
+std::vector<std::chrono::seconds> 
+SubscriberOptions::getReconnectSchedule() const noexcept
+{
+    return pImpl->mReconnectSchedule;
 }
 
 /// Destructor

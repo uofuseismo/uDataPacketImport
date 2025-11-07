@@ -5,12 +5,16 @@ namespace UDataPacketImport::GRPC
 {
   class Packet;
   class StreamOptions;
+  class UnsubscribeFromAllStreamsResponse;
+  class UnsubscribeResponse;
 }
 namespace UDataPacketImport::GRPC
 {
 class SubscriptionManager
 {
 public:
+    /// @brief Constructor.
+    explicit SubscriptionManager(const StreamOptions &streamOptions);
 
     /// @name Client Interface
     /// @{
@@ -19,10 +23,11 @@ public:
     void subscribeToAll(grpc::CallbackServerContext *context );
 
     /// @brief Allows a client to unsubscribe from all streams.
-    void unsubscribeFromAll(grpc::CallbackServerContext *context);
+    [[nodiscard]] UnsubscribeFromAllStreamsResponse
+         unsubscribeFromAll(grpc::CallbackServerContext *context);
 
     /// @brief Allows a client to unsubscribe from a stream.
-    void unsubscribe(grpc::CallbackServerContext *context );
+    [[nodiscard]] UnsubscribeResponse unsubscribe(grpc::CallbackServerContext *context);
     /// @}
 
     /// @name Producer Interface

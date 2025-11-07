@@ -8,10 +8,27 @@ using namespace UDataPacketImport;
 class StreamIdentifier::StreamIdentifierImpl
 {
 public:
+    void setString()
+    {
+        mString.clear();
+        if (!mNetwork.empty() &&
+            !mStation.empty() &&
+            !mChannel.empty() &&
+            !mLocationCode.empty())
+        {
+            mString = mNetwork + "."
+                    + mStation + "."
+                    + mChannel + "."
+                    + mLocationCode;
+        }
+        mStringView = mString; 
+    }
     std::string mNetwork;
     std::string mStation;
     std::string mChannel;
     std::string mLocationCode;   
+    std::string mString;
+    std::string_view mStringView;
 };
 
 /// Constructor
@@ -92,6 +109,7 @@ void StreamIdentifier::clear() noexcept
     pImpl->mStation.clear();
     pImpl->mChannel.clear();
     pImpl->mLocationCode.clear();
+    pImpl->setString();
 }
 
 /// Destructor
@@ -103,6 +121,7 @@ void StreamIdentifier::setNetwork(const std::string_view &network)
     auto s = ::convertString(network);
     if (::isEmpty(s)){throw std::invalid_argument("Network is empty");}
     pImpl->mNetwork = std::move(s);
+    pImpl->setString();
 }
 
 std::string StreamIdentifier::getNetwork() const
@@ -122,6 +141,7 @@ void StreamIdentifier::setStation(const std::string_view &station)
     auto s = ::convertString(station);
     if (::isEmpty(s)){throw std::invalid_argument("Station is empty");}
     pImpl->mStation = std::move(s);
+    pImpl->setString();
 }
 
 std::string StreamIdentifier::getStation() const
@@ -141,6 +161,7 @@ void StreamIdentifier::setChannel(const std::string_view &channel)
     auto s = ::convertString(channel);
     if (::isEmpty(s)){throw std::invalid_argument("Channel is empty");}
     pImpl->mChannel = std::move(s);
+    pImpl->setString();
 }
 
 std::string StreamIdentifier::getChannel() const
@@ -166,6 +187,7 @@ void StreamIdentifier::setLocationCode(const std::string_view &locationCode)
     {
         pImpl->mLocationCode = std::move(s);
     }
+    pImpl->setString();
 }
 
 std::string StreamIdentifier::getLocationCode() const
@@ -185,8 +207,53 @@ bool StreamIdentifier::hasLocationCode() const noexcept
 /// To name
 std::string StreamIdentifier::toString() const
 {
-    return getNetwork() + "."
-         + getStation() + "."
-         + getChannel() + "."
-         + getLocationCode();
+    if (pImpl->mString.empty())
+    {
+        if (!hasNetwork()){throw std::runtime_error("Network not set");}
+        if (!hasStation()){throw std::runtime_error("Station not set");}
+        if (!hasChannel()){throw std::runtime_error("Channel not set");}
+        if (!hasLocationCode())
+        {
+            throw std::runtime_error("Location code not set");
+        }
+    }
+    return pImpl->mString;
 }
+
+const std::string_view StreamIdentifier::toStringView() const
+{
+    if (pImpl->mString.empty())
+    {   
+        if (!hasNetwork()){throw std::runtime_error("Network not set");}
+        if (!hasStation()){throw std::runtime_error("Station not set");}
+        if (!hasChannel()){throw std::runtime_error("Channel not set");}
+        if (!hasLocationCode())
+        {
+            throw std::runtime_error("Location code not set");
+        }   
+    }   
+    return pImpl->mStringView;
+}
+
+UDataPacketImport::GRPC::StreamIdentifier StreamIdentifier::toProtobuf() const
+{
+    UDataPacketImport::GRPC::StreamIdentifier result;
+    result.set_network(std::move(getNetwork()));
+    result.set_station(std::move(getStation()));
+    result.set_channel(std::move(getChannel()));
+    result.set_location_code(std::move(getLocationCode()));
+    return result;
+}
+
+bool UDataPacketImport::operator<(const StreamIdentifier &lhs,
+                                  const StreamIdentifier &rhs)
+{
+    return lhs.toStringView() < rhs.toStringView();
+}
+
+bool UDataPacketImport::operator==(const StreamIdentifier &lhs,
+                                   const StreamIdentifier &rhs)
+{
+    return lhs.toStringView() == rhs.toStringView();
+}
+

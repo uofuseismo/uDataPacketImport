@@ -45,3 +45,36 @@ StreamOptions& StreamOptions::operator=(StreamOptions &&options) noexcept
  
 /// Destructor
 StreamOptions::~StreamOptions() = default;
+
+/// Max queue size
+void StreamOptions::setMaximumQueueSize(const int maxSize)
+{
+    if (maxSize <= 0)
+    {
+        throw std::invalid_argument("Maximum queue size " 
+                                  + std::to_string(maxSize)
+                                  + " must be positive");
+    }
+    pImpl->mMaximumQueueSize = maxSize;
+}
+
+int StreamOptions::getMaximumQueueSize() const noexcept
+{
+    return pImpl->mMaximumQueueSize;
+}
+
+/// Ordered?
+void StreamOptions::enableRequireOrdered() noexcept
+{
+    pImpl->mRequireOrdered = true;
+}
+
+void StreamOptions::disableRequireOrdered() noexcept
+{
+    pImpl->mRequireOrdered = false;
+}
+
+bool StreamOptions::requireOrdered() const noexcept
+{
+    return pImpl->mRequireOrdered;
+}

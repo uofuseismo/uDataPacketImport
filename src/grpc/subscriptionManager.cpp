@@ -35,13 +35,14 @@ public:
         try
         {
             auto stream
-                = std::make_unique<Stream> (std::move(packet), mStreamOptions);
-            createdStream = true;
+                = std::make_unique<Stream>
+                  (std::move(packet), mStreamOptions);
+            idx = mStreamsMap.insert(
+                std::pair{streamIdentifier, std::move(stream)} ).first;
         }
         catch (const std::exception &e)
         {
             errorMessage = std::string{e.what()};
-        }
         }
         if (!createdStream)
         {
@@ -50,22 +51,60 @@ public:
                            + " because " + errorMessage);
             return;
         }
-        // Add any pending streams
-        for (const auto &pendingSubscription : mPendingSubscriptions)
+        // Add any pending subscriptions to the stream
+        if (idx != mStreamsMap.end())
         {
-            for (auto &desiredStreamIdentifier : pendingSubscription.second)
+            for (auto &pendingSubscription : mPendingSubscriptions)
             {
-                if (streamIdentifier == desiredStreamIdentifier)
+                for (auto &desiredStreamIdentifier : pendingSubscription.second)
                 {
-                    spdlog::info("Adding " 
-                               + pendingSubscription.first->peer()
-                               + " to stream " + streamIdentifier.toString());
-                    //pendingSubscription.first
+                    if (streamIdentifier == desiredStreamIdentifier)
+                    {
+                        spdlog::info("Adding " 
+                                   + pendingSubscription.first->peer()
+                                   + " to stream " + streamIdentifier.toString());
+                        idx->second->subscribe(pendingSubscription.first);
+                        pendingSubscription.second.erase(
+                            desiredStreamIdentifier);
+                    }
+                }
+                // This guy is fully subscribed
+                if (pendingSubscription.second.empty())
+                {
+                    mPendingSubscriptions.erase(pendingSubscription.first);
+                    spdlog::info("All pending subscriptions filled for "
+                               + pendingSubscription.first->peer());
                 }
             }
-        } 
+        }
+        else
+        {
+            spdlog::warn("This is strange");
+        }
+        }
     } 
-
+    [[nodiscard]] UDataPacketImport::GRPC::UnsubscribeResponse
+        unsubscribe(grpc::CallbackServerContext *context,
+                    const UnsubscribeRequest &request)
+    {
+        UDataPacketImport::StreamIdentifier
+            streamIdentifier{request.stream_identifier()};
+        UDataPacketImport::GRPC::UnsubscribeResponse response;
+        *response.mutable_stream_identifier() = streamIdentifier.toProtobuf();
+        response.set_packets_read(0);
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        auto idx = mStreamsMap.find(streamIdentifier);
+        if (idx != mStreamsMap.end())
+        {
+            response = idx->second->unsubscribe(context); 
+            mStreamsMap.erase(idx);
+        }
+        // Ensure there's nothing pending
+        mPendingSubscriptions.erase(context); 
+        }
+        return response;
+    }
     mutable std::mutex mMutex;
     StreamOptions mStreamOptions;
     std::map
@@ -80,3 +119,6 @@ public:
     > mPendingSubscriptions;
     std::atomic<bool> mNumberOfSubscribers{0};
 };
+
+/// Destructor
+SubscriptionManager::~SubscriptionManager() = default;

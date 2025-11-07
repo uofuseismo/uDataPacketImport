@@ -16,8 +16,8 @@
 #include "uDataPacketImport/seedLink/streamSelector.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
 #include "uDataPacketImport/packet.hpp"
-#include "uDataPacketImport/client.hpp"
 #include "uDataPacketImport/version.hpp"
+#include "proto/dataPacketBroadcast.pb.h"
 
 using namespace UDataPacketImport::SEEDLink;
 
@@ -163,6 +163,14 @@ std::vector<UDataPacketImport::Packet>
 class Client::ClientImpl
 {
 public:
+    explicit ClientImpl(
+        const std::function
+        <
+            void (UDataPacketImport::GRPC::Packet &&)
+        > &callback) :
+        mAddPacketsCallback(callback)
+    {
+    }        
     /// Destructor
     ~ClientImpl()
     {
@@ -215,10 +223,10 @@ public:
     void stop()
     {
         setRunning(false); // Issues terminate command
-        if (mSEEDLinkReaderThread.joinable()){mSEEDLinkReaderThread.join();}
+        //if (mSEEDLinkReaderThread.joinable()){mSEEDLinkReaderThread.join();}
     }
     /// Starts the service
-    void start()
+    [[nodiscard]] std::future<void> start()
     {
         stop(); // Ensure module is stopped
         if (!mInitialized)
@@ -228,8 +236,10 @@ public:
         setRunning(true);
         spdlog::debug("Starting the SEEDLink polling thread...");
         mSEEDLinkConnection->terminate = 0;
-        mSEEDLinkReaderThread = std::thread(&ClientImpl::packetToCallback,
-                                            this);
+        //mSEEDLinkReaderThread = std::thread(&ClientImpl::packetToCallback,
+        //                                    this);
+        auto result = std::async(&ClientImpl::packetToCallback, this);
+        return result;
     }
     /// Scrapes the packets and puts them to the callback
     void packetToCallback()
@@ -277,7 +287,7 @@ public:
                         {
                             try
                             {
-                                mAddPacketsCallback( {std::move(packet)} );
+                                mAddPacketsCallback( {std::move(packet.toProtobuf())} );
                             }
                             catch (const std::exception &e)
                             {
@@ -329,6 +339,11 @@ public:
                            + std::to_string(returnValue));
                 continue;
             }
+        } // Loop on keep running
+        if (mKeepRunning)
+        {
+            spdlog::critical("Premature end of SEEDLink import");
+            throw std::runtime_error("Premature end of SEEDLink import");
         }
         spdlog::info("Thread leaving SEEDLink polling loop");
         mConnected = false;
@@ -481,9 +496,9 @@ public:
     std::string mClientName{"uSEEDLinkDataPacketImporter"};
     std::function
     <
-        void(std::vector<UDataPacketImport::Packet> &&)
+        void(UDataPacketImport::GRPC::Packet &&)
     > mAddPacketsCallback;
-    std::thread mSEEDLinkReaderThread;
+    //std::thread mSEEDLinkReaderThread;
     SLCD *mSEEDLinkConnection{nullptr};
     ClientOptions mOptions; 
     std::string mStateFile;
@@ -500,13 +515,11 @@ public:
 Client::Client(
     const std::function
     <
-        void (std::vector<UDataPacketImport::Packet> &&)
+        void (UDataPacketImport::GRPC::Packet &&)
     > &callback,
     const ClientOptions &options) :
-    IClient(callback),
-    pImpl(std::make_unique<ClientImpl> ())
+    pImpl(std::make_unique<ClientImpl> (callback))
 {
-    pImpl->mAddPacketsCallback= callback;
     pImpl->initialize(options);
 }
 
@@ -519,6 +532,7 @@ void Client::stop()
     pImpl->stop();
 }
 
+/*
 /// Connect
 void Client::connect()
 {
@@ -530,21 +544,22 @@ void Client::connect()
     auto optionsCopy = pImpl->mOptions;
     pImpl->initialize(optionsCopy);
 }
+*/
 
 /// Connected?
-bool Client::isConnected() const noexcept
+bool Client::isRunning() const noexcept
 {
-    return pImpl->mConnected;
+    return pImpl->mKeepRunning.load();
 }
 
 /// Start the client
-void Client::start()
+std::future<void> Client::start()
 {
     if (!isInitialized())
     {
         throw std::runtime_error("SEEDLink client not initialized");
     }
-    pImpl->start();
+    return pImpl->start();
 }
 
 /// Initialized
@@ -554,8 +569,8 @@ bool Client::isInitialized() const noexcept
 }
 
 /// Type
-UDataPacketImport::IClient::Type Client::getType()
+UDataPacketImport::IAcquisition::Type Client::getType()
     const noexcept
 {
-    return UDataPacketImport::IClient::Type::SEEDLink;
+    return UDataPacketImport::IAcquisition::Type::SEEDLink;
 }

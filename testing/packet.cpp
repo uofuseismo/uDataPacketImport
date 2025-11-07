@@ -45,6 +45,15 @@ TEST_CASE("UDataPacketImport::StreamIdentifier", "[streamIdentifier]")
         REQUIRE(id2.getChannel() == channel);
         REQUIRE(id2.getLocationCode() == locationCode);
     }
+
+    SECTION("To Protobuf")
+    {
+        auto proto = identifier.toProtobuf();
+        REQUIRE(proto.network() == network);
+        REQUIRE(proto.station() == station);
+        REQUIRE(proto.channel() == channel);
+        REQUIRE(proto.location_code() == locationCode);
+    }
       
 }
 

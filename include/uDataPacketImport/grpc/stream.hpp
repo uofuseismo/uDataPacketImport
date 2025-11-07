@@ -8,6 +8,7 @@ namespace UDataPacketImport::GRPC
 {
  class Packet;
  class StreamOptions;
+ class UnsubscribeResponse;
 }
 namespace UDataPacketImport::GRPC
 {
@@ -40,7 +41,7 @@ public:
     void subscribe(grpc::CallbackServerContext *context);    
 
     /// @brief Unsubscribes from the stream.
-    void unsubscribe(grpc::CallbackServerContext *context);
+    [[nodiscard]] UnsubscribeResponse unsubscribe(grpc::CallbackServerContext *context);
 
     /// @brief Unsubscribes all from the stream.
     void unsubscribeAll();

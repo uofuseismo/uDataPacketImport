@@ -54,12 +54,27 @@ public:
         }
         return true;      
     }
+    [[nodiscard]] uint64_t getNumberOfPacketsRead() const noexcept
+    {
+        return mPacketsRead.load();
+    }
     [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet> popFront()
     {
+        std::optional<UDataPacketImport::GRPC::Packet> result{std::nullopt};
+        {
         std::lock_guard<std::mutex> lock(mMutex);
         if (mQueue.empty()){return std::nullopt;}
-        std::optional<UDataPacketImport::GRPC::Packet> result(mQueue.front());
+        result
+            = std::move
+              (
+                 std::optional<UDataPacketImport::GRPC::Packet> 
+                 (
+                    std::move(mQueue.front())
+                 )
+              );
         mQueue.pop();
+        }
+        mPacketsRead.fetch_add(1);
         return result;
     }
     mutable std::mutex mMutex;
@@ -67,6 +82,7 @@ public:
     //moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet> mQueue;
     std::chrono::microseconds mLatestSample{0};
     size_t mQueueSize{8};
+    std::atomic<uint64_t> mPacketsRead{0};
     bool mRequiredOrdered{true};
 };
        
@@ -85,19 +101,22 @@ public:
 #ifndef NDEBUG
         assert(!identifier.toStringView().empty());
 #endif
-        mIdentifier = identifier.toString();
-        mIdentifierStringView = mIdentifier;
+        mIdentifier = identifier.toProtobuf();
+        mIdentifierString = identifier.toString();
+        mIdentifierStringView = mIdentifierString;
         try
         {
             if (!setLatestPacket(std::move(packet)))
             {
-                spdlog::warn("Failed to set first packet for " + mIdentifier);
+                spdlog::warn("Failed to set first packet for "
+                           + mIdentifierString);
             }
         }
         catch (const std::exception &e)
         {
             spdlog::warn("Failed to add first packet for "
-                       + mIdentifier + " because " + std::string {e.what()});
+                       + mIdentifierString + " because "
+                       + std::string {e.what()});
         }
     }
     // Set the latest packet
@@ -109,7 +128,7 @@ public:
         if (identifier.toStringView() != mIdentifierStringView)
         {
             spdlog::error("Cannot add " + identifier.toString()
-                         + " to stream " + mIdentifier);
+                         + " to stream " + mIdentifierString);
             return false;
         }
         bool errorsDetected{false};
@@ -139,26 +158,31 @@ public:
         if (mSubscribers.contains(context))
         {
             spdlog::debug(context->peer() + " already subscribed to "
-                        + mIdentifier);
+                        + mIdentifierString);
             return;
         }
         // Add it
         spdlog::debug(context->peer() + " subscribing to  "
-                    + mIdentifier);
+                    + mIdentifierString);
         auto newQueue
             = std::make_unique<::PacketQueue> (mStreamOptions);
         wasAdded = mSubscribers.insert( {context, std::move(newQueue)} ).second;
         }
         if (wasAdded)
         {
-            spdlog::debug(context->peer() + " subscribed to " + mIdentifier);
+            spdlog::debug(context->peer()
+                        + " subscribed to " + mIdentifierString);
         }
         throw std::runtime_error(context->peer() + " failed to subscribe to "
-                               + mIdentifier);
+                               + mIdentifierString);
     }
     // Unsubscribe one particular customer
-    void unsubscribe(grpc::CallbackServerContext *context)
+    [[nodiscard]] UnsubscribeResponse
+    unsubscribe(grpc::CallbackServerContext *context)
     {
+        UnsubscribeResponse response;
+        *response.mutable_stream_identifier() = mIdentifier;
+        response.set_packets_read(0);
         if (context == nullptr){throw std::invalid_argument("Context is null");}
         bool wasUnsubscribed{false};
         {
@@ -166,6 +190,7 @@ public:
         auto index = mSubscribers.find(context);
         if (index != mSubscribers.end())
         {
+            response.set_packets_read(index->second->getNumberOfPacketsRead());
             mSubscribers.erase(index);
             wasUnsubscribed = true;
         }
@@ -173,17 +198,18 @@ public:
         {
             wasUnsubscribed = false;
         }
-        }
+        } // End lock
         if (wasUnsubscribed)
         {
             spdlog::debug(context->peer() + " unsubscribing from  " 
-                        + mIdentifier);
+                        + mIdentifierString);
         }
         else
         {
             spdlog::debug(context->peer() + " never subscribed to "
-                        + mIdentifier);
+                        + mIdentifierString);
         }
+        return response;
     }
     // Unsubscribe everyone
     void unsubscribeAll()
@@ -197,7 +223,7 @@ public:
         if (count > 0)
         {
             spdlog::info("Purged " + std::to_string(count)
-                       + " subscribers from " + mIdentifier );
+                       + " subscribers from " + mIdentifierString );
         }
     }
     // Convenience function for subscriber to get next packet 
@@ -220,7 +246,8 @@ public:
         }
         if (notFound)
         {
-            spdlog::warn(context->peer() + " not subscribed to " + mIdentifier);
+            spdlog::warn(context->peer()
+                       + " not subscribed to " + mIdentifierString);
         }
         return std::nullopt;
     }           
@@ -232,7 +259,8 @@ public:
         std::unique_ptr<::PacketQueue> 
     > mSubscribers;
     StreamOptions mStreamOptions;
-    std::string mIdentifier;
+    UDataPacketImport::GRPC::StreamIdentifier mIdentifier;
+    std::string mIdentifierString;
     std::string_view mIdentifierStringView;
     size_t mSubscriberQueueSize{8};
     bool mRequiredOrdered{false};
@@ -267,6 +295,11 @@ void Stream::setLatestPacket(UDataPacketImport::GRPC::Packet &&packet)
     {
         spdlog::warn("Errors detected while adding latest packet");
     }
+}
+
+UnsubscribeResponse Stream::unsubscribe(grpc::CallbackServerContext *context)
+{
+    return pImpl->unsubscribe(context);
 }
 
 /// Comparison

@@ -1,5 +1,6 @@
 #ifndef UDATA_PACKET_IMPORT_STREAM_IDENTIFIER_HPP
 #define UDATA_PACKET_IMPORT_STREAM_IDENTIFIER_HPP
+#include <string_view>
 #include <string>
 #include <memory>
 namespace UDataPacketImport::GRPC
@@ -78,6 +79,14 @@ public:
     /// @throws std::runtime_error if the network, station, channel, or location
     ///         code is not set.
     [[nodiscard]] std::string toString() const;
+    /// @result A string view representation of the identifier encoded as
+    /// @throws std::runtime_error if the network, station, channel, or location
+    ///         code is not set.
+    /// @note You should prefer \c toString() as it is safer.
+    [[nodiscard]] const std::string_view toStringView() const;
+
+    /// @result Converts the class to a protobuf.
+    [[nodiscard]] UDataPacketImport::GRPC::StreamIdentifier toProtobuf() const;
 
     /// @name Destructors
     /// @{
@@ -102,5 +111,7 @@ private:
     class StreamIdentifierImpl;
     std::unique_ptr<StreamIdentifierImpl> pImpl;
 };
+bool operator<(const StreamIdentifier &, const StreamIdentifier &rhs);
+bool operator==(const StreamIdentifier &, const StreamIdentifier &rhs);
 }
 #endif

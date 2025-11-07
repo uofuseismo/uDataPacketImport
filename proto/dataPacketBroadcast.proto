@@ -68,32 +68,38 @@ message SubscriptionRequest
    repeated StreamIdentifier streams = 1;
 }
 
+
+// Unsubscribe from all streams.
+message UnsubscribeRequest
+{
+    StreamIdentifier stream_identifier = 1;
+}
+
+// Unsubscribe response.
+message UnsubscribeResponse
+{
+    // Identifier of the stream from which the subscription was canceled.
+    StreamIdentifier stream_identifier = 1;
+    // Number of packets read from this stream.
+    uint64 packets_read = 2;
+}
+
 // Subscribes to all available streams.
 message SubscribeToAllStreamsRequest
 {
 }
 
-// Unsubscribes from all available streams.
+// Request to unsubscribe from all
 message UnsubscribeFromAllStreamsRequest
-{
+{   
 }
 
-// Response to unsubscribing form all
+// Response to unsubscribing from all
 message UnsubscribeFromAllStreamsResponse
-{
-    // The number of packets read while subscribing
-    uint64 packets_read = 1;
+{   
+    repeated UnsubscribeResponse stream_response = 1;
 }
 
-// Request a subscription to all streams.
-message SubscribeRequest
-{
-}
-
-// Unsubscribe from all streams.
-message UnsubscribeRequest
-{
-}
 
 // A closing message for a stream publisher.
 message EndPublicationResponse
@@ -111,12 +117,6 @@ message AvailableStreamsResponse
     repeated StreamIdentifier stream_identifiers = 1;
 }
 
-message UnsubscribeResponse
-{
-    // The streams from which I have unsubscribed.
-    //repeated StreamIdentifier streams = 1;
-}
- 
 // Defines a data packet amounts to a data packet identifier, start time,
 // sampling rate, and samples.
 message Packet

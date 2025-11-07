@@ -48,7 +48,10 @@ set(LIBRARY_SRC proto/dataPacketBroadcast.proto
     src/version.cpp
     src/streamIdentifier.cpp
     src/packet.cpp
-    src/client.cpp 
+    src/acquisition.cpp 
+    src/grpc/stream.cpp
+    src/grpc/streamOptions.cpp
+    src/grpc/subscriptionManager.cpp
     src/sanitizer/expiredPacketDetector.cpp
     src/sanitizer/futurePacketDetector.cpp
     src/seedLink/clientOptions.cpp
@@ -77,10 +80,12 @@ target_sources(uDataPacketImport
                   ${CMAKE_CURRENT_SOURCE_DIR}
                FILES 
                   include/uDataPacketImport/version.hpp
-                  include/uDataPacketImport/client.hpp
+                  include/uDataPacketImport/acquisition.hpp
                   include/uDataPacketImport/packet.hpp
                   include/uDataPacketImport/streamIdentifier.hpp
                   include/uDataPacketImport/grpc/client.hpp
+                  include/uDataPacketImport/grpc/stream.hpp
+                  include/uDataPacketImport/grpc/subscriptionManager.hpp
                   include/uDataPacketImport/seedLink/clientOptions.hpp
                   include/uDataPacketImport/seedLink/streamSelector.hpp
                   include/uDataPacketImport/seedLink/subscriber.hpp
@@ -170,7 +175,8 @@ target_link_libraries(uPacketSanitizer
 add_executable(unitTests 
                testing/packet.cpp
                testing/seedLink.cpp
-               testing/sanitizer.cpp)
+               testing/sanitizer.cpp
+               testing/grpc.cpp)
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 

@@ -440,11 +440,8 @@ Packet::DataType Packet::getDataType() const noexcept
 UDataPacketImport::GRPC::Packet Packet::toProtobuf() const
 {
     if (!hasStreamIdentifier()){throw std::runtime_error("Identifier not set");}
-    UDataPacketImport::GRPC::StreamIdentifier identifier;
-    identifier.set_network(pImpl->mIdentifier.getNetwork());
-    identifier.set_station(pImpl->mIdentifier.getStation());
-    identifier.set_channel(pImpl->mIdentifier.getChannel());
-    identifier.set_location_code(pImpl->mIdentifier.getLocationCode());
+    UDataPacketImport::GRPC::StreamIdentifier
+        identifier(std::move(pImpl->mIdentifier.toProtobuf()));
 
     UDataPacketImport::GRPC::Packet packet;
     *packet.mutable_stream_identifier() = std::move(identifier);

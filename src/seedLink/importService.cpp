@@ -1,6 +1,7 @@
 #include <string>
 #include <cmath>
 #include <atomic>
+#include <future>
 #include <mutex>
 #include <functional>
 #include <condition_variable>
@@ -11,6 +12,9 @@
 #include <grpcpp/health_check_service_interface.h>
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/ext/otel_plugin.h>
+#include <opentelemetry/exporters/prometheus/exporter_factory.h>
+#include <opentelemetry/exporters/prometheus/exporter_options.h>
+#include <opentelemetry/sdk/metrics/meter_provider.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -64,7 +68,7 @@ struct ProgramOptions
     std::string prometheusURL{"localhost:9090"};
     std::string applicationName{APPLICATION_NAME};
     std::string grpcHost{"0.0.0.0"};
-    std::string grpcAccessToken;
+    std::string grpcServerToken;
     std::string grpcServerKey; // e.g., localhost.key
     std::string grpcServerCertificate; // e.g., localhost.crt
     size_t importQueueSize{DEFAULT_IMPORT_QUEUE_SIZE};
@@ -102,6 +106,7 @@ public:
     AllPacketsSubject& operator=(const AllPacketsSubject &) = delete;
 
     // Sets the latest packet
+/*
     [[nodiscard]] bool setLatestPacket(const UDataPacketImport::Packet &packet)
     {
         try
@@ -117,6 +122,7 @@ public:
         }
         return false;
     }
+*/
     // Sets the latest packet
     void setLatestPacket(const UDataPacketImport::GRPC::Packet &packet)
     {
@@ -138,7 +144,8 @@ public:
     }
     // Convenience function for subscriber to get next packet 
     [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
-        getNextPacket(grpc::CallbackServerContext *context) const noexcept
+        //getNextPacket(grpc::CallbackServerContext *context) const noexcept
+        getNextPacket(grpc::ServerContext *context) const noexcept
     {
         UDataPacketImport::GRPC::Packet packet;
         {
@@ -169,28 +176,37 @@ public:
             spdlog::info("Purged " + std::to_string(count) + " subscribers");
         }
     }
-    void unsubscribe(grpc::CallbackServerContext *context)
+    //void unsubscribe(grpc::CallbackServerContext *context)
+    void unsubscribe(grpc::ServerContext *context)
     {
-        size_t count{0};
+        if (context != nullptr)
         {
-        std::lock_guard<std::mutex> lock(mMutex);
-        count = mSubscribers.erase(context);
-        }
-        if (count > 0)
-        {
-            spdlog::info("Unsubscribed " + context->peer());
+            size_t count{0};
+            {
+            std::lock_guard<std::mutex> lock(mMutex);
+            count = mSubscribers.erase(context);
+            }
+            if (count > 0)
+            {
+                spdlog::info("Unsubscribed " + context->peer());
+            }
+            else
+            {
+                spdlog::info(context->peer() + " not found in map");
+            }
         }
         else
         {
-            spdlog::info(context->peer() + " not found in map");
+            spdlog::warn("Cannot cancel null context");
         }
     }
-    [[nodiscard]] bool subscribe(grpc::CallbackServerContext *context)
+    //[[nodiscard]] bool subscribe(grpc::CallbackServerContext *context)
+    [[nodiscard]] bool subscribe(grpc::ServerContext *context)
     {
         std::lock_guard<std::mutex> lock(mMutex);
         if (mSubscribers.contains(context))
         {
-            spdlog::debug(context->peer() + " already subscribed");
+            spdlog::info(context->peer() + " already subscribed");
             return false;
         }
         auto newQueue
@@ -207,7 +223,8 @@ public:
     }
     mutable std::mutex mMutex;
     std::unordered_map<
-        grpc::CallbackServerContext *, 
+        //grpc::CallbackServerContext *, 
+        grpc::ServerContext *,
         std::unique_ptr<
           moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet>
         >
@@ -249,13 +266,14 @@ public:
 
 //class UDataPacketImport::GRPC::ServerImpl final
 class ServiceImpl final :
-    public UDataPacketImport::GRPC::SEEDLinkBroadcast::CallbackService
+    //public UDataPacketImport::GRPC::SEEDLinkBroadcast::CallbackService
+    public UDataPacketImport::GRPC::SEEDLinkBroadcast::Service
 {
 public:
     explicit ServiceImpl(const ::ProgramOptions &options) :
         mOptions(options)
     {
-        mImportQueue = std::make_unique<moodycamel::ReaderWriterQueue<UDataPacketImport::Packet>> (mOptions.importQueueSize);
+        mImportQueue = std::make_unique<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet>> (mOptions.importQueueSize);
         mSEEDLinkClient
             = std::make_unique<UDataPacketImport::SEEDLink::Client>
               (mPacketBroadcastCallbackFunction,
@@ -274,20 +292,22 @@ public:
         mAllPacketsSubject.unsubscribeAll();
         if (mNotificationThread.joinable()){mNotificationThread.join();}
         if (mSEEDLinkClient){mSEEDLinkClient->stop();}
+        if (mSEEDLinkClientFuture.valid()){mSEEDLinkClientFuture.get();}
     }
 
     void start()
     {
+        stop();
+        mKeepRunning = true;
 #ifndef NDEBUG
         assert(mSEEDLinkClient);
 #endif
         mNotificationThread = std::thread(&::ServiceImpl::broadcastPackets, this);
-        mSEEDLinkClient->start();
+        mSEEDLinkClientFuture = mSEEDLinkClient->start();
     }
 
-    void importPackets(std::vector<UDataPacketImport::Packet> &&packets)
+    void importPacket(UDataPacketImport::GRPC::Packet &&packet)
     {
-        if (packets.empty()){return;}
         auto approximateQueueSize = mImportQueue->size_approx();
         if (approximateQueueSize >= mOptions.importQueueSize)
         {
@@ -298,12 +318,9 @@ public:
             }
         }
         // Enqueue 
-        for (auto &packet : packets)
+        if (!mImportQueue->try_enqueue(std::move(packet)))
         {
-            if (!mImportQueue->try_enqueue(std::move(packet)))
-            {
-                spdlog::warn("Failed to add packet");
-            }
+            spdlog::warn("Failed to add packet");
         }
     }
 
@@ -312,16 +329,12 @@ public:
         std::chrono::milliseconds timeOut{15};
         while (mKeepRunning)
         {
-            UDataPacketImport::Packet packet; 
+            UDataPacketImport::GRPC::Packet packet; 
             if (mImportQueue->try_dequeue(packet))
             {
                 try
                 {
-                    //spdlog::info("howdy");
-                    if (!mAllPacketsSubject.setLatestPacket(packet))
-                    {
-                        spdlog::warn("Failed to publish latest packet");
-                    }
+                    mAllPacketsSubject.setLatestPacket(packet);
                 }
                 catch (const std::exception &e)
                 {
@@ -335,11 +348,116 @@ public:
         }
     }
 
+    grpc::Status Subscribe(grpc::ServerContext *context,
+                           const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request,
+                           grpc::ServerWriter<UDataPacketImport::GRPC::Packet> *writer) override
+    {
+        // I could be in shutdown mode
+        if (!mKeepRunning)
+        {
+            grpc::Status status{grpc::StatusCode::UNAVAILABLE,
+                                "Server is shutting down"};
+            return status;
+        }
+        // Now let's verify the client
+        auto peer = context->peer();
+        auto accessToken = mOptions.grpcServerToken;
+        if (!accessToken.empty())
+        {
+            bool validated = false;
+            auto meta = context->client_metadata();
+            for (const auto &item : meta)
+            {
+                if (item.first == "x-custom-auth-token")
+                {
+                    if (item.second == accessToken)
+                    {
+                        spdlog::info("Validated " + peer + "'s token");
+                        validated = true;
+                    }
+                }
+            }
+            if (!validated)
+            {
+                spdlog::info(peer + " rejected");
+                grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
+                                   "Client must provide access token in x-custom-auth-token header"};
+                return status;
+            }
+        }
+        // Subscribe
+        spdlog::info(peer + " attempting to subscribe");
+        try
+        {
+            if (!mAllPacketsSubject.subscribe(context))
+            {
+                grpc::Status status{grpc::StatusCode::ALREADY_EXISTS,
+                                   "Client already subscribed - unsubscribe first"};
+                return status;
+            }
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::warn("Subscription failed because "
+                       + std::string {e.what()});
+            grpc::Status status{grpc::StatusCode::INTERNAL,
+                           "Internal error - could not subscribe client"};
+            return status;
+        }
+        constexpr std::chrono::milliseconds timeOut{15};
+        mSubscribersCount.fetch_add(1);
+        while (!context->IsCancelled())
+        {
+            if (!mKeepRunning){break;}
+            // Hunt for new messages
+            std::vector<UDataPacketImport::GRPC::Packet> messagesToSend;
+            for (int k = 0; k < std::numeric_limits<int>::max(); ++k)
+            {
+                auto latestPacket = mAllPacketsSubject.getNextPacket(context);
+                if (latestPacket)
+                {
+                    messagesToSend.push_back(std::move(*latestPacket));
+                }
+                else
+                {
+                    break;
+                }
+            } // Loop on subscriptions
+            if (messagesToSend.empty())
+            {
+                std::this_thread::sleep_for(timeOut);
+            }
+            else
+            {
+                if (!context->IsCancelled())
+                {
+                    for (auto &message : messagesToSend)
+                    {
+                        try
+                        {
+                            writer->Write(std::move(message));
+                        }
+                        catch (const std::exception &e)
+                        {
+                            spdlog::warn("Failed to packet message because "
+                                        + std::string {e.what()});
+                        }
+                    }
+                }
+            }
+        }
+        mAllPacketsSubject.unsubscribe(context);
+        mSubscribersCount.fetch_add(-1);
+        return grpc::Status::OK;
+    }
+/*
+    [[nodiscard]]
     grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
         Subscribe(grpc::CallbackServerContext *context,
                   const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override
     {
-        class Subscriber : public grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet>
+        class Subscriber :
+            public grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet>
         {
         public:
             Subscriber(const std::string &accessToken,
@@ -377,6 +495,7 @@ public:
                     }
                 }
                 // Subscribe
+                spdlog::info(mPeer + " attempting to subscribe");
                 try
                 {
                     if (!mAllPacketsSubject->subscribe(context))
@@ -395,13 +514,22 @@ public:
                     Finish(status);
                 }
                 mSubscribersCount->fetch_add(1);
+                spdlog::info("Number of subscribers is " 
+                           + std::to_string(mSubscribersCount->load()));
                 nextWrite();
+            }
+            ~Subscriber()
+            {
+                spdlog::info("In destructor");
+                mAllPacketsSubject->unsubscribe(mContext);
             }
             void OnWriteDone(bool ok) override
             {
                 if (!ok)
                 {
-                    Finish(grpc::Status(grpc::StatusCode::UNKNOWN, "Unexpected failure"));
+                    Finish(
+                        grpc::Status(grpc::StatusCode::UNKNOWN,
+                                     "Unexpected failure"));
                 }
                 nextWrite();
             }
@@ -420,12 +548,27 @@ public:
                 std::chrono::milliseconds timeOut{15};
                 while (mKeepRunning->load())
                 {
+                    if (!mContext){spdlog::critical("Context is null");}
+                    if (mContext->IsCancelled())
+                    {
+                        spdlog::warn("RPC appears to be canceled");
+                        break;
+                    }
                     try
                     {
-                        auto nextPacket = mAllPacketsSubject->getNextPacket(mContext);
+                        auto nextPacket
+                            = mAllPacketsSubject->getNextPacket(mContext);
                         if (nextPacket)
                         {
-                            ++mPacketsRead;
+spdlog::info("writing a packet " + std::to_string(nextPacket->start_time_mus()*1.e-6) + " " + std::to_string(mPacketsRead));
+                            mPacketsRead = mPacketsRead + 1;
+if (mPacketsRead >= 100)
+{
+ spdlog::info("kill it");
+  Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
+                      "Server kill - packet read failed"));
+ break;
+}
                             StartWrite(&*nextPacket);
                         }
                         else
@@ -439,7 +582,8 @@ public:
                                "Server error - packet read failed"));
                     }
                 }
-                spdlog::info("Application terminating subscription for " + mPeer);
+                spdlog::info("Application terminating subscription for "
+                           + mPeer);
                 mAllPacketsSubject->unsubscribe(mContext);
                 Finish(grpc::Status::OK);
             }
@@ -452,26 +596,47 @@ public:
             std::atomic<int> *mSubscribersCount{nullptr};
             std::atomic<bool> *mKeepRunning{nullptr};
         };
-        return new Subscriber(mOptions.grpcAccessToken,
+        return new Subscriber(mOptions.grpcServerToken,
                               context,
                               &mAllPacketsSubject,
                               &mKeepRunning,
                               &mSubscribersCount);
     }
-
+*/
+    /// @brief Convenience function to check any of the futures throwing
+    ///        an exception.
+    [[nodiscard]] bool futuresOkay(const std::chrono::milliseconds &timeOut) const
+    {
+        try
+        {
+            auto status = mSEEDLinkClientFuture.wait_for(timeOut);
+            if (status == std::future_status::ready)
+            {
+                mSEEDLinkClientFuture.get();
+            }
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::critical("Fatal error in SEEDLink import: "
+                           + std::string {e.what()});
+            return false; 
+        }
+        return true;
+    }
 //private:
+    mutable std::future<void> mSEEDLinkClientFuture;
     std::thread mNotificationThread;
     ::ProgramOptions mOptions;
     std::unique_ptr<UDataPacketImport::SEEDLink::Client>
          mSEEDLinkClient{nullptr};
     ::AllPacketsSubject mAllPacketsSubject;
-    std::function<void(std::vector<UDataPacketImport::Packet> &&)>
+    std::function<void(UDataPacketImport::GRPC::Packet &&)>
         mPacketBroadcastCallbackFunction
     {
-        std::bind(&::ServiceImpl::importPackets, this,
+        std::bind(&::ServiceImpl::importPacket, this,
                   std::placeholders::_1)
     };
-    std::unique_ptr<moodycamel::ReaderWriterQueue<UDataPacketImport::Packet>>
+    std::unique_ptr<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet>>
         mImportQueue{nullptr};
     std::map<std::string, std::unique_ptr<::StreamMetrics>> mStreamMetrics;
     uint64_t mPacketsBroadcast{0};
@@ -485,9 +650,9 @@ class ServerImpl final
 public:
     explicit ServerImpl(const ::ProgramOptions options) :
         mOptions(options),
-        mService(options)
+        mService(std::make_unique<ServiceImpl> (options))
     {
-        spdlog::info("In server c'tor");
+        spdlog::debug("In ServerImpl constructor");
     }
 
     void Run() 
@@ -499,10 +664,11 @@ public:
         if (mOptions.grpcServerKey.empty() ||
             mOptions.grpcServerCertificate.empty())
         {   
-            spdlog::info("Initiating non-secured server SEEDLink bbroadcast server");
+            spdlog::info(
+                "Initiating non-secured server SEEDLink broadcast server");
             builder.AddListeningPort(address,
                                      grpc::InsecureServerCredentials());
-            builder.RegisterService(&mService);
+            builder.RegisterService(&*mService);
         }   
         else
         {   
@@ -516,18 +682,18 @@ public:
             sslOptions.pem_key_cert_pairs.emplace_back(keyCertPair);
             builder.AddListeningPort(address,
                                      grpc::SslServerCredentials(sslOptions));
-            builder.RegisterService(&mService);
+            builder.RegisterService(&*mService);
         }   
     //std::unique_ptr<grpc::Server> grpcServer(builder.BuildAndStart());
         spdlog::info("Server listening on " + address);
-        mService.start();
+        mService->start();
         mServer = builder.BuildAndStart();
         handleMainThread();
     }
     ~ServerImpl()
     {
         spdlog::info("Stopping server");
-        mService.stop();
+        mService->stop();
         mServer->Shutdown();
     }
     // Calling thread from Run gets stuck here then fails through to
@@ -542,6 +708,13 @@ public:
                 if (mInterrupted)
                 {
                     spdlog::info("SIGINT/SIGTERM signal received!");
+                    mStopRequested = true;
+                    break;
+                }
+                if (!mService->futuresOkay(std::chrono::milliseconds {5}))
+                {
+                    spdlog::critical(
+                       "Futures exception caught; terminating app");
                     mStopRequested = true;
                     break;
                 }
@@ -590,17 +763,17 @@ public:
 //private:
     mutable std::mutex mStopMutex;
     ::ProgramOptions mOptions;
-    ServiceImpl mService;
-    std::unique_ptr<grpc::Server> mServer;
+    std::unique_ptr<ServiceImpl> mService{nullptr};
+    std::unique_ptr<grpc::Server> mServer{nullptr};
     std::condition_variable mStopCondition;
     bool mStopRequested{false};
 };
 
 }
 
+/*
 void runServer(const ::ProgramOptions &options)
 {
-/*
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
 
@@ -644,9 +817,8 @@ void runServer(const ::ProgramOptions &options)
     spdlog::info("Main thread exiting");
     grpcServer->Shutdown();
     dataServer.stop();
-*/    
-   
 }
+*/
 
 int main(int argc, char *argv[])
 {
@@ -901,10 +1073,10 @@ getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
 
     }
 
-    options.grpcAccessToken
-        = propertyTree.get<std::string> ("gRPC.accessToken",
-                                         options.grpcAccessToken);
-    if (!options.grpcAccessToken.empty() &&
+    options.grpcServerToken
+        = propertyTree.get<std::string> ("gRPC.serverToken",
+                                         options.grpcServerToken);
+    if (!options.grpcServerToken.empty() &&
         (options.grpcServerKey.empty() ||
          options.grpcServerCertificate.empty()))
     {

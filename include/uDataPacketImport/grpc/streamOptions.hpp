@@ -24,14 +24,14 @@ public:
 
     /// @brief Allows the publisher to always insert its most recently
     ///        acquired packet.
-    void disableOrdered() noexcept;
+    void disableRequireOrdered() noexcept;
     /// @brief Requires the publisher only insert packets that contain more 
     ///        recent data than any packet previously acquired.
     /// @note If enabled it is very important to screen out future data.
     ///       What can happen is a packet from, say, 40 years in the future
     ///       can effectively prevent all previously acquired packets from
     ///       entering the queue.
-    void enableOrdered() noexcept;
+    void enableRequireOrdered() noexcept;
     /// @result True requires the publisher maintain order.  This means
     ///         that the publisher cannot add a packet to the queue unless
     ///         it contains new data.  If this is false, then the publisher

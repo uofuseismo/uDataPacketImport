@@ -1,9 +1,14 @@
 #include <vector>
-#include "uDataPacketImport/client.hpp"
+#include "uDataPacketImport/acquisition.hpp"
 #include "uDataPacketImport/packet.hpp"
+#include "proto/dataPacketBroadcast.pb.h"
 
 using namespace UDataPacketImport;
 
+/// Destructor
+IAcquisition::~IAcquisition() = default;
+
+/*
 class IClient::IClientImpl
 {
 public:
@@ -20,7 +25,9 @@ public:
         mCallback;
     bool mHaveCallback{false};
 };
+*/
 
+/*
 /// Constructor
 IClient::IClient(
     const std::function
@@ -30,22 +37,27 @@ IClient::IClient(
     pImpl(std::make_unique<IClientImpl> (callback))
 {
 }
-
-/// Destructor
-IClient::~IClient() = default;
+*/
 
 /// Applies the callback
+/*
 void IClient::operator()(
     std::vector<UDataPacketImport::Packet> &&packets)
 {
-    if (!pImpl->mHaveCallback){throw std::runtime_error("Callback not set");}
-    pImpl->mCallback(std::move(packets));
+    //if (!pImpl->mHaveCallback){throw std::runtime_error("Callback not set");}
+    for (auto &packet : packets)
+    {
+        this->operator()(std::move(packet));
+    }
+    //pImpl->mCallback(std::move(packets));
 }
+*/
 
 /// Implement a single packet
-void IClient::operator()(UDataPacketImport::Packet &&packet)
+/*
+void IClient::operator()(const UDataPacketImport::Packet &packet)
 {
-    std::vector<UDataPacketImport::Packet> packets{std::move(packet)};
-    this->operator()(std::move(packets));
+    //std::vector<UDataPacketImport::Packet> packets{std::move(packet)};
+    this->operator()(std::move(packet.toProtobuf()));
 } 
-    
+*/
