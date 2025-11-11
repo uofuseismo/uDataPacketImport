@@ -79,8 +79,10 @@ public:
     }
     mutable std::mutex mMutex;
     std::queue<UDataPacketImport::GRPC::Packet> mQueue;
-    //moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet> mQueue;
-    std::chrono::microseconds mLatestSample{0};
+    std::chrono::microseconds mLatestSample
+    {
+        std::numeric_limits<int64_t>::lowest()
+    };
     size_t mQueueSize{8};
     std::atomic<uint64_t> mPacketsRead{0};
     bool mRequiredOrdered{true};
@@ -131,7 +133,7 @@ public:
                          + " to stream " + mIdentifierString);
             return false;
         }
-        bool errorsDetected{false};
+        bool success{true};
         {
         std::lock_guard<std::mutex> lock(mMutex);
         for (auto &subscriber : mSubscribers)
@@ -141,53 +143,64 @@ public:
             if (!queue->insert(std::move(packet)))
             {
                 spdlog::warn("Failed to enqueue packet for "
-                           + subscriber.first->peer());
-                errorsDetected = true;
+                           + std::to_string(subscriber.first));
+//                           + subscriber.first->peer());
+                success = false;
             }
         }
         }
-        return errorsDetected; 
+        return success;
     }
     // Subscribe
-    void subscribe(grpc::CallbackServerContext *context)
-    {   
-        if (context == nullptr){throw std::invalid_argument("Context is null");}
+    void subscribe(const uintptr_t contextAddress)
+    {
+        auto contextAddressString = std::to_string(contextAddress);
+        //if (context == nullptr){throw std::invalid_argument("Context is null");}
         bool wasAdded{false};
         {
         std::lock_guard<std::mutex> lock(mMutex);
-        if (mSubscribers.contains(context))
+        if (mSubscribers.contains(contextAddress))
         {
-            spdlog::debug(context->peer() + " already subscribed to "
+            spdlog::debug(contextAddressString //context->peer()
+                        + " already subscribed to "
                         + mIdentifierString);
             return;
         }
         // Add it
-        spdlog::debug(context->peer() + " subscribing to  "
+        spdlog::debug(contextAddressString + " subscribing to "
                     + mIdentifierString);
         auto newQueue
             = std::make_unique<::PacketQueue> (mStreamOptions);
-        wasAdded = mSubscribers.insert( {context, std::move(newQueue)} ).second;
+        if (newQueue == nullptr)
+        {
+            throw std::runtime_error("Failed to create queue for "
+                                   + contextAddressString);
+        }
+        std::pair<uintptr_t, std::unique_ptr<::PacketQueue>>
+            newSubscriberPair{contextAddress, std::move(newQueue)};
+        wasAdded = mSubscribers.insert(std::move(newSubscriberPair)).second;
         }
         if (wasAdded)
         {
-            spdlog::debug(context->peer()
+            spdlog::debug(contextAddressString
                         + " subscribed to " + mIdentifierString);
+            return;
         }
-        throw std::runtime_error(context->peer() + " failed to subscribe to "
+        throw std::runtime_error("Failed to subscribe "
+                               + contextAddressString + " to stream "
                                + mIdentifierString);
     }
     // Unsubscribe one particular customer
-    [[nodiscard]] UnsubscribeResponse
-    unsubscribe(grpc::CallbackServerContext *context)
+    [[nodiscard]] UnsubscribeResponse unsubscribe(const uintptr_t contextAddress) //grpc::CallbackServerContext *context)
     {
         UnsubscribeResponse response;
         *response.mutable_stream_identifier() = mIdentifier;
         response.set_packets_read(0);
-        if (context == nullptr){throw std::invalid_argument("Context is null");}
+        //if (context == nullptr){throw std::invalid_argument("Context is null");}
         bool wasUnsubscribed{false};
         {
         std::lock_guard<std::mutex> lock(mMutex);
-        auto index = mSubscribers.find(context);
+        auto index = mSubscribers.find(contextAddress);
         if (index != mSubscribers.end())
         {
             response.set_packets_read(index->second->getNumberOfPacketsRead());
@@ -201,12 +214,14 @@ public:
         } // End lock
         if (wasUnsubscribed)
         {
-            spdlog::debug(context->peer() + " unsubscribing from  " 
+            spdlog::debug(std::to_string(contextAddress) //context->peer()
+                        + " unsubscribing from  " 
                         + mIdentifierString);
         }
         else
         {
-            spdlog::debug(context->peer() + " never subscribed to "
+            spdlog::debug(std::to_string(contextAddress) //context->peer()
+                        + " never subscribed to "
                         + mIdentifierString);
         }
         return response;
@@ -228,13 +243,13 @@ public:
     }
     // Convenience function for subscriber to get next packet 
     [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
-        getNextPacket(grpc::CallbackServerContext *context) const noexcept
+        getNextPacket(const uintptr_t contextAddress) const noexcept //grpc::CallbackServerContext *context) const noexcept
     {
         UDataPacketImport::GRPC::Packet packet;
         bool notFound{false};
         {
         std::lock_guard<std::mutex> lock(mMutex);
-        auto idx = mSubscribers.find(context);
+        auto idx = mSubscribers.find(contextAddress);
         if (idx == mSubscribers.end())
         {
             notFound = true;
@@ -246,16 +261,21 @@ public:
         }
         if (notFound)
         {
-            spdlog::warn(context->peer()
+            spdlog::warn(std::to_string(contextAddress) //context->peer()
                        + " not subscribed to " + mIdentifierString);
         }
         return std::nullopt;
-    }           
+    }
+    [[nodiscard]] int getNumberOfSubscribers() const noexcept
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        return static_cast<int> (mSubscribers.size());
+    }
 
     mutable std::mutex mMutex; 
     std::unordered_map
     <
-        grpc::CallbackServerContext *,
+        uintptr_t, //grpc::CallbackServerContext *,
         std::unique_ptr<::PacketQueue> 
     > mSubscribers;
     StreamOptions mStreamOptions;
@@ -273,19 +293,29 @@ Stream::Stream(UDataPacketImport::GRPC::Packet &&packet,
 {
 }
 
+Stream::Stream(const UDataPacketImport::GRPC::Packet &packet,
+               const UDataPacketImport::GRPC::StreamOptions &options) :
+    pImpl(std::make_unique<StreamImpl> 
+    (
+        std::move(UDataPacketImport::GRPC::Packet {packet}), options)
+    )
+{
+}
+
+
 /// Destructor
 Stream::~Stream() = default;
 
 /// Get identifier
-[[nodiscard]] const std::string_view Stream::getIdentifier() const noexcept
+[[nodiscard]] std::string Stream::getIdentifier() const noexcept
 {
-    return pImpl->mIdentifierStringView;
+    return pImpl->mIdentifierString;
 }
 
 /// Sets the latest packet
-void Stream::setLatestPacket(const UDataPacketImport::GRPC::Packet &packet)
+void Stream::setLatestPacket(const UDataPacketImport::GRPC::Packet &packetIn)
 {
-    auto copy = packet;
+    UDataPacketImport::GRPC::Packet packet{packetIn};
     setLatestPacket(std::move(packet));
 }
 
@@ -297,9 +327,51 @@ void Stream::setLatestPacket(UDataPacketImport::GRPC::Packet &&packet)
     }
 }
 
+void Stream::subscribe(const uintptr_t contextAddress)
+{
+    pImpl->subscribe(contextAddress);
+}
+
+/*
+void Stream::subscribe(grpc::CallbackServerContext *context)
+{
+    if (context == nullptr)
+    {
+        throw std::invalid_argument("Context is null");
+    }
+    auto contextAddress = reinterpret_cast<uintptr_t> (context);
+    subscribe(contextAddress);
+    //pImpl->subscribe(context);
+}
+*/
+
+std::optional<UDataPacketImport::GRPC::Packet>
+    Stream::getNextPacket(const uintptr_t contextAddress) const noexcept
+{
+    return pImpl->getNextPacket(contextAddress);
+}
+
+UnsubscribeResponse Stream::unsubscribe(const uintptr_t contextAddress)
+{
+    return pImpl->unsubscribe(contextAddress);
+}
+
+/*
 UnsubscribeResponse Stream::unsubscribe(grpc::CallbackServerContext *context)
 {
-    return pImpl->unsubscribe(context);
+    if (context == nullptr)
+    {
+        throw std::invalid_argument("Context is null");
+    }
+    auto contextAddress = reinterpret_cast<uintptr_t> (context);
+    return unsubscribe(contextAddress);
+    //return pImpl->unsubscribe(context);
+}
+*/
+
+int Stream::getNumberOfSubscribers() const noexcept
+{
+    return pImpl->getNumberOfSubscribers();
 }
 
 /// Comparison

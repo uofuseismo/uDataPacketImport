@@ -1,6 +1,7 @@
 #ifndef UDATA_PACKET_IMPORT_GRPC_STREAM_HPP
 #define UDATA_PACKET_IMPORT_GRPC_STREAM_HPP
 #include <string>
+#include <cstdint>
 #include <string_view>
 #include <optional>
 #include <memory>
@@ -21,12 +22,16 @@ class Stream
 {
 public:
     /// @brief Creates a stream from the given packet.
-    /// @param[in] packet   The packet from which to create this stream.
+    /// @param[in,out] packet   The packet from which to create this stream.
+    /// @param[in] options      The stream options.
     Stream(UDataPacketImport::GRPC::Packet &&packet,
            const StreamOptions &options);
+    Stream(const UDataPacketImport::GRPC::Packet &packet,
+           const StreamOptions &options);
+
 
     /// @result The stream identifier.
-    [[nodiscard]] const std::string_view getIdentifier() const noexcept;
+    [[nodiscard]] std::string getIdentifier() const noexcept;
 
     /// @brief Sets the latest packet.
     void setLatestPacket(UDataPacketImport::GRPC::Packet &&packet);
@@ -35,13 +40,27 @@ public:
 
     /// @brief Gets the next packet from the stream.
     [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
-         getNextPacket(grpc::CallbackServerContext *context) const noexcept;
+         getNextPacket(const uintptr_t contextAddress) const noexcept;
+    /// @result Gets the current number of subscribers.
+    [[nodiscard]] int getNumberOfSubscribers() const noexcept;
 
+    //[[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
+    //   getNextPacket(grpc::CallbackServerContext *context) const noexcept;
+
+    /// @brief Subscribes to a stream.
+    /// @param[in] contextAddress  The memory address of the grpc context.
+    /// @note The context address can be created using something like: 
+    ///       grpc::CallbackServerContext *context;
+    ///       auto contextAddress = reinterpret_cast<uintptr_t> (context);
+    void subscribe(uintptr_t contextAddress);
     /// @brief Subscribes to the stream.
-    void subscribe(grpc::CallbackServerContext *context);    
+    //void subscribe(grpc::CallbackServerContext *context);    
 
     /// @brief Unsubscribes from the stream.
-    [[nodiscard]] UnsubscribeResponse unsubscribe(grpc::CallbackServerContext *context);
+    /// @param[in] contextAddress  The memory address of the grpc context.
+    [[nodiscard]] UnsubscribeResponse unsubscribe(uintptr_t contextAddress);
+    /// @brief Unsubscribes from the stream.
+    //[[nodiscard]] UnsubscribeResponse unsubscribe(grpc::CallbackServerContext *context);
 
     /// @brief Unsubscribes all from the stream.
     void unsubscribeAll();
