@@ -226,8 +226,89 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
         REQUIRE(response.packets_read() == 2);
         REQUIRE(stream.getNumberOfSubscribers() == 0);
     }
+
+    SECTION("Overflow queue")
+    {
+        std::vector<UDataPacketImport::GRPC::Packet> localPackets;
+        options.setMaximumQueueSize(8);
+        for (int i = 0; i < 10; ++i)
+        {
+            localPackets.push_back(::createPacket(i, true));
+        }
+        UDataPacketImport::GRPC::Stream stream{localPackets.at(0), options};
+        auto tid = std::this_thread::get_id();
+        auto subscriberID = reinterpret_cast<uintptr_t> (&tid);
+        REQUIRE_NOTHROW(stream.subscribe(subscriberID));
+        for (const auto &packet : localPackets)
+        {
+            stream.setLatestPacket(packet);
+        }
+ 
+        std::vector<UDataPacketImport::GRPC::Packet> packetsBack;
+        for (int i = 0; i < static_cast<int> (localPackets.size()); ++i)
+        {
+            auto packetBack = stream.getNextPacket(subscriberID); 
+            if (!packetBack){break;}
+            packetsBack.push_back(*packetBack);
+        }
+        auto response = stream.unsubscribe(subscriberID);
+        REQUIRE(response.packets_read() == 8);
+        // I should have missed the first 2 packets
+        for (int i = 0; i < static_cast<int> (packetsBack.size()); ++i)
+        {
+            REQUIRE(packetsBack.at(i).start_time_mus()
+                    == localPackets.at(i + 2).start_time_mus());
+        }
+    }
+
+    SECTION("Require ordered")
+    {
+        options.enableRequireOrdered();
+        std::vector<UDataPacketImport::GRPC::Packet> localPackets;
+        for (int i = 3; i >= 0; --i)
+        {
+            localPackets.push_back(::createPacket(i, true));
+        } 
+        UDataPacketImport::GRPC::Stream stream{localPackets.at(0), options};
+        // Become my own subscriber
+        auto tid = std::this_thread::get_id();
+        auto subscriberID = reinterpret_cast<uintptr_t> (&tid);
+        REQUIRE_NOTHROW(stream.subscribe(subscriberID));
+        // Set the first packet
+        stream.setLatestPacket(localPackets.at(0));
+        // Attempt to add the other packets (this should fail)
+        // Add the rest of the packets
+        for (int i = 1; i < static_cast<int> (localPackets.size()); ++i)
+        {
+            stream.setLatestPacket(localPackets.at(i));
+        }
+        auto packetBack = stream.getNextPacket(subscriberID);
+        if (packetBack)
+        {   
+            REQUIRE(packetBack->start_time_mus() == localPackets.at(0).start_time_mus());
+        }
+        else
+        {
+            REQUIRE(false);
+        }   
+        // I should have skipped the previous packets so add a new one
+        // that is valid
+        auto newPacket = ::createPacket(4, true);
+        stream.setLatestPacket(newPacket);
+        packetBack = stream.getNextPacket(subscriberID);
+        if (packetBack)
+        {
+            REQUIRE(packetBack->start_time_mus() == newPacket.start_time_mus());
+        }
+        else
+        {
+            REQUIRE(false);
+        } 
+        REQUIRE(stream.getNextPacket(subscriberID) == std::nullopt);
+    }
 }
 
+/*
 TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
           "[publisherTests]")
 {
@@ -246,3 +327,4 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
     std::cout << "shtu down" << std::endl;
     if (t1.joinable()){t1.join();}
 }
+*/

@@ -27,7 +27,7 @@ public:
         auto packet = packetIn;
         insert(std::move(packet));
     } 
-    bool insert(UDataPacketImport::GRPC::Packet &&packet)
+    void insert(UDataPacketImport::GRPC::Packet &&packet)
     {
         bool inserted{false};
         {
@@ -39,7 +39,7 @@ public:
                 = std::chrono::microseconds {packet.start_time_mus()};
             if (packetStartTime <= mLatestSample)
             {
-                return false;
+                return; // true; //false;
             }
         }
         // Run with it
@@ -51,8 +51,9 @@ public:
         }
         auto packetEndTime = UDataPacketImport::getEndTime(packet);
         mQueue.push(std::move(packet));
+        mLatestSample = packetEndTime;
         }
-        return true;      
+        //return true;      
     }
     [[nodiscard]] uint64_t getNumberOfPacketsRead() const noexcept
     {
@@ -140,6 +141,18 @@ public:
         {
             auto packet = packetIn; 
             auto queue = subscriber.second.get();
+            try
+            {
+                queue->insert(std::move(packet));
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::warn("Failed to enqueue packet for "
+                           + std::to_string(subscriber.first) 
+                           + " because " + std::string {e.what()});
+                success = false;
+            }
+/*
             if (!queue->insert(std::move(packet)))
             {
                 spdlog::warn("Failed to enqueue packet for "
@@ -147,6 +160,7 @@ public:
 //                           + subscriber.first->peer());
                 success = false;
             }
+*/
         }
         }
         return success;
