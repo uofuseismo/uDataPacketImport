@@ -52,6 +52,7 @@ set(LIBRARY_SRC proto/dataPacketBroadcast.proto
     src/grpc/stream.cpp
     src/grpc/streamOptions.cpp
     src/grpc/subscriptionManager.cpp
+    src/grpc/subscriptionManagerOptions.cpp
     src/sanitizer/expiredPacketDetector.cpp
     src/sanitizer/futurePacketDetector.cpp
     src/seedLink/clientOptions.cpp
@@ -182,6 +183,8 @@ set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD_REQUIRED YES 
                       CXX_EXTENSIONS NO) 
 target_link_libraries(unitTests uDataPacketImport
+                      gRPC::grpc
+                      gRPC::grpc++
                       Threads::Threads
                       Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests

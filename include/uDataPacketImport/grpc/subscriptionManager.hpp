@@ -28,14 +28,27 @@ public:
     /// @{
 
     /// @brief Allows a client to subscribe to a stream.
+    void subscribeToAll(grpc::ServerContext *context);
     void subscribeToAll(grpc::CallbackServerContext *context);
 
     /// @brief Allows a client to unsubscribe from all streams.
     [[nodiscard]] UnsubscribeFromAllStreamsResponse
+        unsubscribeFromAll(grpc::ServerContext *context);
+    [[nodiscard]] UnsubscribeFromAllStreamsResponse
         unsubscribeFromAll(grpc::CallbackServerContext *context);
+    void unsubscribeFromAllOnCancel(grpc::ServerContext *context);
+    void unsubscribeFromAllOnCancel(grpc::CallbackServerContext *context);
 
     /// @brief Allows a client to unsubscribe from a stream.
+    [[nodiscard]] UnsubscribeResponse unsubscribe(uintptr_t contextAddress);
+    [[nodiscard]] UnsubscribeResponse
+        unsubscribe(grpc::ServerContext *context);
     [[nodiscard]] UnsubscribeResponse unsubscribe(grpc::CallbackServerContext *context);
+
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+        getNextPacketsFromAllSubscriptions(grpc::CallbackServerContext *context) const;
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+        getNextPacketsFromAllSubscriptions(grpc::ServerContext *context) const;
     /// @}
 
     /// @name Producer Interface
@@ -52,6 +65,8 @@ public:
 
     /// @result The number of subscribers.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept;
+
+    void unsubscribeAll();
 
     /// @brief Destructor.
     ~SubscriptionManager();

@@ -16,6 +16,8 @@
 #include <spdlog/spdlog.h>
 //#include <readerwriterqueue.h>
 #include "uDataPacketImport/grpc/subscriptionManager.hpp"
+#include "uDataPacketImport/grpc/subscriptionManagerOptions.hpp"
+#include "uDataPacketImport/grpc/streamOptions.hpp"
 #include "uDataPacketImport/seedLink/subscriber.hpp"
 #include "uDataPacketImport/seedLink/subscriberOptions.hpp"
 #include "uDataPacketImport/packet.hpp"
@@ -48,6 +50,8 @@ struct ProgramOptions
         futurePacketDetectorOptions;
     UDataPacketImport::Sanitizer::ExpiredPacketDetectorOptions 
         expiredPacketDetectorOptions;
+    UDataPacketImport::GRPC::SubscriptionManagerOptions
+        subscriptionManagerOptions;
     std::string applicationName{APPLICATION_NAME};
     std::string grpcHost{"localhost"};
     std::string grpcServerCertificate;
@@ -98,6 +102,21 @@ public:
                      UDataPacketImport::Sanitizer::FuturePacketDetector
                   > (mOptions.futurePacketDetectorOptions);
         }
+        else
+        {
+            if (mOptions.subscriptionManagerOptions.getStreamOptions().
+                requireOrdered())
+            {
+                spdlog::warn(
+R"""(
+Not rejecting future packets while requiring publishers insert new packets can
+blind a broadcast if very future data is encountered because of a GPS slip.
+)""");
+            }
+        }
+        mBroadcastSubscriptionManager
+            = std::make_unique<UDataPacketImport::GRPC::SubscriptionManager>
+              (mOptions.subscriptionManagerOptions);
 
         for (auto &importOptions : mOptions.importersOptions)
         {
@@ -259,6 +278,8 @@ public:
         mExpiredPacketDetector{nullptr};
     std::unique_ptr<UDataPacketImport::Sanitizer::FuturePacketDetector>
         mFuturePacketDetector{nullptr};
+    std::unique_ptr<UDataPacketImport::GRPC::SubscriptionManager>
+        mBroadcastSubscriptionManager{nullptr};
     std::function<void (UDataPacketImport::GRPC::Packet &&)>
         mAddPacketCallbackFunction
     {
@@ -538,6 +559,32 @@ Allowed options)""");
         std::chrono::seconds time{iTimeS};
         options.expiredPacketDetectorOptions.setMaxExpiredTime(time);
     }
+
+    // Stream options 
+    auto streamOptions = options.subscriptionManagerOptions.getStreamOptions();
+    auto requireOrdered
+        = propertyTree.get<bool> ("StreamOptions.requireOrdered",
+                                  streamOptions.requireOrdered());
+    if (requireOrdered)
+    {
+        streamOptions.enableRequireOrdered();
+    }
+    else
+    {
+        streamOptions.disableRequireOrdered();
+    }
+    auto maximumQueueSize
+        = propertyTree.get<int> ("StreamOptions.maximumQueueSize",
+                                 streamOptions.getMaximumQueueSize());
+    if (maximumQueueSize <= 0)
+    {
+        throw std::invalid_argument(
+           "Maximum stream queue size must be positive");
+    }
+    streamOptions.setMaximumQueueSize(maximumQueueSize);
+    options.subscriptionManagerOptions.setStreamOptions(streamOptions);
+
+    
 
     // gPRC
     options.grpcHost

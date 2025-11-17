@@ -42,19 +42,43 @@ service RealTimeBroadcast
  
 }
 
-// A sensors network code, station name, channel code, and location code
-// define a unique stream identifier.
+/*!
+ * A sensor's network code, station name, channel code, and location code.
+ * Together this information comprises a unique stream identifier.
+ */
 message StreamIdentifier
 {
-    // The network name - e.g., UU.
-    string network = 1;
-    // The station name - e.g., FORK.
-    string station = 2;
-    // The channel code - e.g., HHZ.
-    string channel = 3;
-    // The location code - e.g., 01.
-    optional string location_code = 4;
+    string network = 1; /// The network code - e.g., UU.
+    string station = 2; /// The station code - e.g., FORK.
+    string channel = 3; /// The channel code - e.g., HHZ.
+    optional string location_code = 4; /// The location code - e.g., 01
 }
+
+/*!
+ * Defines a data packet.  This amounts to a stream identifier, a start time,
+ * sampling rate, and data.
+ */
+message Packet
+{
+    enum DataType
+    {
+        Unknown = 0; /// The data type is unkonwn.  This can happen if there is no data.
+        Integer32 = 1; /// The data is a vector of int32_t's stored in data32i.
+        Double = 2; /// The data is a vector of doubles stored in data64f.
+        Float = 3; /// The data is a vector of floats stored in data32f.
+        Integer64 = 4; /// The data is a vector of int64_t's stored in data64i.
+    }
+
+    StreamIdentifier stream_identifier = 1; /// The packet identifier.
+    int64 start_time_mus = 2; /// The packet's start time (UTC) in microseconds since the epoch.
+    double sampling_rate = 3; /// The sampling rate in Hz.
+    DataType data_type = 4; /// The data type.
+    repeated double data64f = 5; /// The double data.
+    repeated int64 data64i  = 6; /// The int64_t data.
+    repeated int32 data32i  = 7; /// The int32_t data.
+    repeated float data32f  = 8; /// The float data.
+}
+
 
 // Requests the available streams in the broadcast.
 message AvailableStreamsRequest
@@ -117,40 +141,3 @@ message AvailableStreamsResponse
     repeated StreamIdentifier stream_identifiers = 1;
 }
 
-// Defines a data packet amounts to a data packet identifier, start time,
-// sampling rate, and samples.
-message Packet
-{
-    // The packet identifier.
-    StreamIdentifier stream_identifier = 1;
-    // The packet start time (UTC) in microseconds since the epoch.
-    int64 start_time_mus = 2;
-    // The sampling rate in Hz.
-    double sampling_rate = 3;
-
-    // Defines the data type.
-    enum DataType
-    {
-        // The data type is unknown.  This can happen if there is no data.
-        Unknown = 0;
-        // The data is a vector of int32_t's stored in data32i.
-        Integer32 = 1;
-        // The data is a vector of doubles stored in data64f.
-        Double = 2;
-        // The data is a vector of floats stored in data32f. 
-        Float = 3;
-        // The data is a vector of int64_t's stored in data64i.
-        Integer64 = 4;
-    }
-    // The data type.
-    DataType data_type = 4;
-
-    // The double data.
-    repeated double data64f = 5;
-    // The int64_t data.
-    repeated int64 data64i  = 6;
-    // The int32_t data.
-    repeated int32 data32i  = 7;
-    // The float data.
-    repeated float data32f  = 8;
-}

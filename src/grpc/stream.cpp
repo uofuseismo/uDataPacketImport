@@ -393,3 +393,8 @@ bool UDataPacketImport::GRPC::operator<(const Stream &lhs, const Stream &rhs)
 {
     return lhs.getIdentifier() < rhs.getIdentifier();
 } 
+
+void Stream::unsubscribeAll()
+{
+    pImpl->unsubscribeAll();    
+}
