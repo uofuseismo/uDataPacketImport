@@ -88,6 +88,7 @@ target_sources(uDataPacketImport
                   include/uDataPacketImport/grpc/client.hpp
                   include/uDataPacketImport/grpc/stream.hpp
                   include/uDataPacketImport/grpc/subscriptionManager.hpp
+                  include/uDataPacketImport/seedLink/client.hpp
                   include/uDataPacketImport/seedLink/clientOptions.hpp
                   include/uDataPacketImport/seedLink/streamSelector.hpp
                   include/uDataPacketImport/seedLink/subscriber.hpp
@@ -177,7 +178,8 @@ add_executable(unitTests
                testing/packet.cpp
                testing/seedLink.cpp
                testing/sanitizer.cpp
-               testing/grpc.cpp)
+               testing/grpc.cpp
+               )
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 

@@ -95,7 +95,7 @@ Client must provide access token in x-custom-auth-token header field
 
      void OnDone() override 
      {
-         spdlog::debug("RPC completed for " + mPeer);
+         spdlog::info("Subscribe to all RPC completed for " + mPeer);
          if (mContext)
          {
              mManager->unsubscribeFromAllOnCancel(mContext);
@@ -105,7 +105,7 @@ Client must provide access token in x-custom-auth-token header field
 
      void OnCancel() override 
      { 
-         spdlog::debug("RPC cancelled for " + mPeer);
+         spdlog::info("Subscribe to all RPC cancelled for " + mPeer);
          if (mContext)
          {
              mManager->unsubscribeFromAllOnCancel(mContext);
@@ -161,13 +161,13 @@ private:
         } // Loop on server/client
         if (mContext->IsCancelled())
         {
-            spdlog::debug("Terminating acquisition for " 
+            spdlog::info("Terminating acquisition for " 
                         + mContext->peer()
                         + " because of client side cancel");
         }
         else
         {
-            spdlog::debug("Terminating acquisition for "
+            spdlog::info("Terminating acquisition for "
                         + mContext->peer()
                         + " because of server side cancel");
         }
@@ -178,7 +178,7 @@ private:
     std::atomic<bool> *mKeepRunning{nullptr};
     std::queue<UDataPacketImport::GRPC::Packet> mPacketsQueue;
     std::string mPeer;
-    std::chrono::milliseconds mTimeOut{10};
+    std::chrono::milliseconds mTimeOut{20};
     size_t mMaximumQueueSize{2048};
     bool mWriteInProgress{false};
 };
@@ -349,7 +349,7 @@ private:
     std::atomic<bool> *mKeepRunning{nullptr};
     std::queue<UDataPacketImport::GRPC::Packet> mPacketsQueue;
     std::string mPeer;
-    std::chrono::milliseconds mTimeOut{10};
+    std::chrono::milliseconds mTimeOut{20};
     size_t mMaximumQueueSize{2048};
     bool mWriteInProgress{false};
 };

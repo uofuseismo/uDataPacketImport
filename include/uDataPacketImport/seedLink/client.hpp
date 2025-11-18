@@ -38,7 +38,7 @@ public:
     /// @result True indicates the SEEDLink client is acquiring data.
     [[nodiscard]] bool isRunning() const noexcept final;
     /// @result Indicates that this is a SEEDLink client.
-    [[nodiscard]] UDataPacketImport::IAcquisition::Type getType() const noexcept final;
+    [[nodiscard]] std::string getType() const noexcept final;
     /// @brief Destructor.
     ~Client() override;
     Client() = delete;

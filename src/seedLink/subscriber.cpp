@@ -281,7 +281,6 @@ spdlog::info("got one");
                 {
                     spdlog::info(
                         "Subscription loop leaving b/c of application termination");
-                    context.TryCancel();
                     break;
                 }   
                 try
@@ -295,6 +294,7 @@ spdlog::info("got one");
                 }
             }
             spdlog::debug("Exited subscription loop");
+            if (!mKeepRunning){context.TryCancel();}
             auto status = reader->Finish();
 /*
             Reader packetReader{stub.get(),
@@ -328,7 +328,8 @@ spdlog::info("got one");
                 {
                     if (!mKeepRunning)
                     {
-                        spdlog::debug("RPC cancellation successful");
+                        spdlog::info("RPC cancellation successful");
+                        break;
                     }
                     else
                     {
@@ -420,9 +421,9 @@ bool Subscriber::isRunning() const noexcept
     return pImpl->mKeepRunning.load();
 }
 
-UDataPacketImport::IAcquisition::Type Subscriber::getType() const noexcept
+std::string Subscriber::getType() const noexcept
 {
-    return UDataPacketImport::IAcquisition::Type::gRPC;
+    return "gRPC";
 }
 
 /// Destructor

@@ -281,7 +281,7 @@ public:
 
 void subscribe()
 {
-bool doCancel = false;
+bool doCancel = true;
 std::cout << "im here" << std::endl;
     grpc::ClientContext context;
     //Status status = stub_->GetFeature(&context, point, feature);

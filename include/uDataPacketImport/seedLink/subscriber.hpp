@@ -43,7 +43,7 @@ public:
     /// @brief Destructor.  
     ~Subscriber() override;
 
-    [[nodiscard]] UDataPacketImport::IAcquisition::Type getType() const noexcept final;
+    [[nodiscard]] std::string getType() const noexcept final;
 
     Subscriber() = delete;
     Subscriber(const Subscriber &) = delete;

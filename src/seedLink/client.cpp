@@ -569,8 +569,7 @@ bool Client::isInitialized() const noexcept
 }
 
 /// Type
-UDataPacketImport::IAcquisition::Type Client::getType()
-    const noexcept
+std::string Client::getType() const noexcept
 {
-    return UDataPacketImport::IAcquisition::Type::SEEDLink;
+    return "SEEDLink";
 }
