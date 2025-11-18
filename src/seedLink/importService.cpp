@@ -26,10 +26,14 @@
 #include "uDataPacketImport/seedLink/streamSelector.hpp"
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
+#include "uDataPacketImport/grpc/subscriptionManager.hpp"
+#include "uDataPacketImport/grpc/subscriptionManagerOptions.hpp"
+#include "uDataPacketImport/grpc/streamOptions.hpp"
 #include "proto/dataPacketBroadcast.pb.h"
 #include "proto/dataPacketBroadcast.grpc.pb.h"
-#include "src/getNow.hpp"
-#include "src/loadStringFromFile.hpp"
+#include "getNow.hpp"
+#include "loadStringFromFile.hpp"
+#include "asynchronousWriter.hpp"
 
 #define APPLICATION_NAME "uSEEDLinkBroadcast"
 #define DEFAULT_IMPORT_QUEUE_SIZE 4096
@@ -97,6 +101,7 @@ std::pair<std::string, bool> parseCommandLineOptions(int argc, char *argv[]);
 void setVerbosityForSPDLOG(const int verbosity);
 ::ProgramOptions parseIniFile(const std::filesystem::path &iniFile);
 
+/*
 /// The subject in an observer pattern.
 class AllPacketsSubject
 {
@@ -106,23 +111,21 @@ public:
     AllPacketsSubject& operator=(const AllPacketsSubject &) = delete;
 
     // Sets the latest packet
-/*
-    [[nodiscard]] bool setLatestPacket(const UDataPacketImport::Packet &packet)
-    {
-        try
-        {
-            auto grpcPacket = packet.toProtobuf();
-            setLatestPacket(grpcPacket);
-            return true;
-        }
-        catch (const std::exception &e)
-        {
-            spdlog::error("Failed to broadcast packet because "
-                        + std::string {e.what()}); 
-        }
-        return false;
-    }
-*/
+    //[[nodiscard]] bool setLatestPacket(const UDataPacketImport::Packet &packet)
+    //{
+    //    try
+    //    {
+    //        auto grpcPacket = packet.toProtobuf();
+    //        setLatestPacket(grpcPacket);
+    //        return true;
+    //    }
+    //    catch (const std::exception &e)
+    //    {
+    //        spdlog::error("Failed to broadcast packet because "
+    //                    + std::string {e.what()}); 
+    //    }
+    //    return false;
+    //}
     // Sets the latest packet
     void setLatestPacket(const UDataPacketImport::GRPC::Packet &packet)
     {
@@ -234,6 +237,7 @@ public:
     size_t mSubscriberQueueSize{32};
     bool mHavePacket{false};
 };
+*/
 
 class StreamMetrics
 {
@@ -266,8 +270,8 @@ public:
 
 //class UDataPacketImport::GRPC::ServerImpl final
 class ServiceImpl final :
-    //public UDataPacketImport::GRPC::SEEDLinkBroadcast::CallbackService
-    public UDataPacketImport::GRPC::SEEDLinkBroadcast::Service
+    public UDataPacketImport::GRPC::SEEDLinkBroadcast::CallbackService
+    //public UDataPacketImport::GRPC::SEEDLinkBroadcast::Service
 {
 public:
     explicit ServiceImpl(const ::ProgramOptions &options) :
@@ -278,6 +282,15 @@ public:
             = std::make_unique<UDataPacketImport::SEEDLink::Client>
               (mPacketBroadcastCallbackFunction,
                options.seedLinkClientOptions);
+
+        UDataPacketImport::GRPC::StreamOptions streamOptions;
+        streamOptions.disableRequireOrdered(); // Send everything I get
+        UDataPacketImport::GRPC::SubscriptionManagerOptions
+            subscriptionManagerOptions;
+        subscriptionManagerOptions.setStreamOptions(streamOptions);
+        mSubscriptionManager
+            = std::make_shared<UDataPacketImport::GRPC::SubscriptionManager>
+                 (subscriptionManagerOptions); 
     }
 
     ~ServiceImpl()
@@ -289,7 +302,8 @@ public:
     void stop()
     {
         mKeepRunning = false;
-        mAllPacketsSubject.unsubscribeAll();
+        //mAllPacketsSubject.unsubscribeAll();
+        mSubscriptionManager->unsubscribeAll();
         if (mNotificationThread.joinable()){mNotificationThread.join();}
         if (mSEEDLinkClient){mSEEDLinkClient->stop();}
         if (mSEEDLinkClientFuture.valid()){mSEEDLinkClientFuture.get();}
@@ -326,6 +340,9 @@ public:
 
     void broadcastPackets()
     {
+#ifndef NDEBUG
+        assert(mSubscriptionManager != nullptr);
+#endif
         std::chrono::milliseconds timeOut{15};
         while (mKeepRunning)
         {
@@ -334,7 +351,8 @@ public:
             {
                 try
                 {
-                    mAllPacketsSubject.setLatestPacket(packet);
+                    //mAllPacketsSubject.setLatestPacket(packet);
+                    mSubscriptionManager->addPacket(std::move(packet));
                 }
                 catch (const std::exception &e)
                 {
@@ -348,6 +366,20 @@ public:
         }
     }
 
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    Subscribe(
+        grpc::CallbackServerContext *context,
+        const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override 
+    {
+        return new ::AsynchronousWriterSubscribeToAll(
+                      context,
+                      request,
+                      mSubscriptionManager,
+                      &mKeepRunning,
+                      mOptions.grpcServerToken);
+    }
+
+/*
     grpc::Status Subscribe(grpc::ServerContext *context,
                            const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request,
                            grpc::ServerWriter<UDataPacketImport::GRPC::Packet> *writer) override
@@ -450,159 +482,8 @@ public:
         mSubscribersCount.fetch_add(-1);
         return grpc::Status::OK;
     }
-/*
-    [[nodiscard]]
-    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
-        Subscribe(grpc::CallbackServerContext *context,
-                  const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override
-    {
-        class Subscriber :
-            public grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet>
-        {
-        public:
-            Subscriber(const std::string &accessToken,
-                       grpc::CallbackServerContext *context,
-                       ::AllPacketsSubject *allPacketsSubject,
-                       std::atomic<bool> *keepRunning,
-                       std::atomic<int> *subscribersCount) :
-                mContext(context),
-                mAllPacketsSubject(allPacketsSubject),
-                mKeepRunning(keepRunning),
-                mSubscribersCount(subscribersCount)
-            {
-                mPeer = context->peer();
-                if (!accessToken.empty())
-                {
-                    bool validated = false;
-                    auto meta = context->client_metadata();
-                    for (const auto &item : meta)
-                    {
-                        if (item.first == "x-custom-auth-token")
-                        {
-                            if (item.second == accessToken)
-                            {
-                                spdlog::info("Validated " + mPeer + "'s token");
-                                validated = true;
-                            }
-                        }
-                    }
-                    if (!validated)
-                    {
-                        spdlog::info(mPeer + " rejected");
-                        grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
-                                            "Client must provide access token in x-custom-auth-token header"};
-                        Finish(status);
-                    }
-                }
-                // Subscribe
-                spdlog::info(mPeer + " attempting to subscribe");
-                try
-                {
-                    if (!mAllPacketsSubject->subscribe(context))
-                    {
-                        grpc::Status status{grpc::StatusCode::ALREADY_EXISTS,
-                               "Client already subscribed - unsubscribe first"};
-                        Finish(status);
-                    }
-                }
-                catch (const std::exception &e)
-                {
-                    spdlog::warn("Subscription failed because "
-                               + std::string {e.what()});
-                    grpc::Status status{grpc::StatusCode::INTERNAL,
-                                 "Internal error - could not subscribe client"};
-                    Finish(status);
-                }
-                mSubscribersCount->fetch_add(1);
-                spdlog::info("Number of subscribers is " 
-                           + std::to_string(mSubscribersCount->load()));
-                nextWrite();
-            }
-            ~Subscriber()
-            {
-                spdlog::info("In destructor");
-                mAllPacketsSubject->unsubscribe(mContext);
-            }
-            void OnWriteDone(bool ok) override
-            {
-                if (!ok)
-                {
-                    Finish(
-                        grpc::Status(grpc::StatusCode::UNKNOWN,
-                                     "Unexpected failure"));
-                }
-                nextWrite();
-            }
-            void OnDone() override
-            {
-                spdlog::info("RPC completed for " + mPeer);
-                mSubscribersCount->fetch_sub(1);
-                delete this;
-            }
-            void OnCancel() override
-            {
-                spdlog::info("RPC canceled for " + mPeer);
-            }
-            void nextWrite()
-            {
-                std::chrono::milliseconds timeOut{15};
-                while (mKeepRunning->load())
-                {
-                    if (!mContext){spdlog::critical("Context is null");}
-                    if (mContext->IsCancelled())
-                    {
-                        spdlog::warn("RPC appears to be canceled");
-                        break;
-                    }
-                    try
-                    {
-                        auto nextPacket
-                            = mAllPacketsSubject->getNextPacket(mContext);
-                        if (nextPacket)
-                        {
-spdlog::info("writing a packet " + std::to_string(nextPacket->start_time_mus()*1.e-6) + " " + std::to_string(mPacketsRead));
-                            mPacketsRead = mPacketsRead + 1;
-if (mPacketsRead >= 100)
-{
- spdlog::info("kill it");
-  Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
-                      "Server kill - packet read failed"));
- break;
-}
-                            StartWrite(&*nextPacket);
-                        }
-                        else
-                        {
-                            std::this_thread::sleep_for(timeOut);
-                        }
-                    }
-                    catch (const std::exception &e)
-                    {
-                        Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
-                               "Server error - packet read failed"));
-                    }
-                }
-                spdlog::info("Application terminating subscription for "
-                           + mPeer);
-                mAllPacketsSubject->unsubscribe(mContext);
-                Finish(grpc::Status::OK);
-            }
-            grpc::CallbackServerContext *mContext{nullptr};
-            ::AllPacketsSubject *mAllPacketsSubject{nullptr};
-            std::string mPeer;
-            std::chrono::microseconds mLastPacketRead{0};
-            //UDataPacketImport::GRPC::SubscribeToAllStreamsResponse *mResponse{nullptr};
-            uint64_t mPacketsRead{0};
-            std::atomic<int> *mSubscribersCount{nullptr};
-            std::atomic<bool> *mKeepRunning{nullptr};
-        };
-        return new Subscriber(mOptions.grpcServerToken,
-                              context,
-                              &mAllPacketsSubject,
-                              &mKeepRunning,
-                              &mSubscribersCount);
-    }
 */
+
     /// @brief Convenience function to check any of the futures throwing
     ///        an exception.
     [[nodiscard]] bool futuresOkay(const std::chrono::milliseconds &timeOut) const
@@ -629,7 +510,7 @@ if (mPacketsRead >= 100)
     ::ProgramOptions mOptions;
     std::unique_ptr<UDataPacketImport::SEEDLink::Client>
          mSEEDLinkClient{nullptr};
-    ::AllPacketsSubject mAllPacketsSubject;
+    //::AllPacketsSubject mAllPacketsSubject;
     std::function<void(UDataPacketImport::GRPC::Packet &&)>
         mPacketBroadcastCallbackFunction
     {
@@ -638,6 +519,8 @@ if (mPacketsRead >= 100)
     };
     std::unique_ptr<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet>>
         mImportQueue{nullptr};
+    std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
+        mSubscriptionManager{nullptr};
     std::map<std::string, std::unique_ptr<::StreamMetrics>> mStreamMetrics;
     uint64_t mPacketsBroadcast{0};
     uint64_t mPacketsReceived{0};
