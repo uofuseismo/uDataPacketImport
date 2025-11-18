@@ -22,11 +22,13 @@
 #include "uDataPacketImport/seedLink/subscriberOptions.hpp"
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
+#include "uDataPacketImport/sanitizer/duplicatePacketDetector.hpp"
 #include "uDataPacketImport/sanitizer/expiredPacketDetector.hpp"
 #include "uDataPacketImport/sanitizer/futurePacketDetector.hpp"
 #include "proto/dataPacketBroadcast.pb.h"
 #include "proto/dataPacketBroadcast.grpc.pb.h"
 #include "loadStringFromFile.hpp"
+#include "asynchronousWriter.hpp"
 
 #define APPLICATION_NAME "uPacketSanitizer"
 
@@ -46,6 +48,8 @@ struct PacketImport
 struct ProgramOptions
 {
     std::vector<::PacketImport> importersOptions;
+    UDataPacketImport::Sanitizer::DuplicatePacketDetectorOptions
+        duplicatePacketDetectorOptions;
     UDataPacketImport::Sanitizer::FuturePacketDetectorOptions 
         futurePacketDetectorOptions;
     UDataPacketImport::Sanitizer::ExpiredPacketDetectorOptions 
@@ -67,6 +71,7 @@ struct ProgramOptions
     int verbosity{3};
     bool rejectExpiredPackets{true};
     bool rejectFuturePackets{true};
+    bool rejectDuplicatePackets{true};
     bool grpcEnableReflection{false};
 };
 
@@ -91,15 +96,17 @@ public:
         if (mOptions.rejectExpiredPackets)
         {
             mExpiredPacketDetector
-                = std::make_unique<
-                     UDataPacketImport::Sanitizer::ExpiredPacketDetector
+                = std::make_unique
+                  <
+                      UDataPacketImport::Sanitizer::ExpiredPacketDetector
                   > (mOptions.expiredPacketDetectorOptions);
         }
         if (mOptions.rejectFuturePackets)
         {
             mFuturePacketDetector
-                = std::make_unique<
-                     UDataPacketImport::Sanitizer::FuturePacketDetector
+                = std::make_unique
+                  <
+                      UDataPacketImport::Sanitizer::FuturePacketDetector
                   > (mOptions.futurePacketDetectorOptions);
         }
         else
@@ -114,10 +121,20 @@ blind a broadcast if very future data is encountered because of a GPS slip.
 )""");
             }
         }
+        if (mOptions.rejectDuplicatePackets)
+        {
+            mDuplicatePacketDetector
+                = std::make_unique
+                  <
+                      UDataPacketImport::Sanitizer::DuplicatePacketDetector
+                  > (mOptions.duplicatePacketDetectorOptions);
+        }
+        // Create the mechanism by which we send `clean' packets
         mBroadcastSubscriptionManager
-            = std::make_unique<UDataPacketImport::GRPC::SubscriptionManager>
+            = std::make_shared<UDataPacketImport::GRPC::SubscriptionManager>
               (mOptions.subscriptionManagerOptions);
 
+        // Define the subsribers that clean the import gPRC stream(s)
         for (auto &importOptions : mOptions.importersOptions)
         {
             // Create the importers
@@ -171,9 +188,22 @@ blind a broadcast if very future data is encountered because of a GPS slip.
                 allow = false;
             }
         }
+        if (allow && mDuplicatePacketDetector)
+        {
+            try
+            {
+                allow = mDuplicatePacketDetector->allow(packet);
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::warn("Failed to test duplicate packet because " 
+                           + std::string {e.what()});
+                allow = false;
+            }
+        }
         if (allow)
         {
-
+            mBroadcastSubscriptionManager->addPacket(std::move(packet)); 
         }
     }
 
@@ -186,12 +216,21 @@ blind a broadcast if very future data is encountered because of a GPS slip.
         {
             mDataImportersFuture.push_back(importer->start());
         }
-/*
-        for (auto &options : mOptions.packetImport)
-        {
-        }
-*/
     }
+
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    SubscribeToAllStreams(
+        grpc::CallbackServerContext *context,
+        const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override
+    {
+        return new ::AsynchronousWriterSubscribeToAll(
+                      context,
+                      request,
+                      mBroadcastSubscriptionManager,
+                      &mKeepRunning,
+                      mOptions.grpcServerToken);
+    }
+
 
 /*
     void importPackets( )
@@ -278,7 +317,9 @@ blind a broadcast if very future data is encountered because of a GPS slip.
         mExpiredPacketDetector{nullptr};
     std::unique_ptr<UDataPacketImport::Sanitizer::FuturePacketDetector>
         mFuturePacketDetector{nullptr};
-    std::unique_ptr<UDataPacketImport::GRPC::SubscriptionManager>
+    std::unique_ptr<UDataPacketImport::Sanitizer::DuplicatePacketDetector>
+        mDuplicatePacketDetector{nullptr};
+    std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
         mBroadcastSubscriptionManager{nullptr};
     std::function<void (UDataPacketImport::GRPC::Packet &&)>
         mAddPacketCallbackFunction
@@ -286,7 +327,7 @@ blind a broadcast if very future data is encountered because of a GPS slip.
         std::bind(&::ServiceImpl::checkAndPropagateInputPackets, this,
                   std::placeholders::_1)
     };
-    bool mKeepRunning{false};
+    std::atomic<bool> mKeepRunning{false};
 };
 
 class ServerImpl final
@@ -547,6 +588,7 @@ Allowed options)""");
     options.rejectFuturePackets
         = propertyTree.get<bool> ("Sanitizer.rejectFuturePackets",
                                   options.rejectFuturePackets);
+    if (options.rejectFuturePackets)
     {
         auto iTimeS
             = propertyTree.get<int>
@@ -558,6 +600,40 @@ Allowed options)""");
         }
         std::chrono::seconds time{iTimeS};
         options.expiredPacketDetectorOptions.setMaxExpiredTime(time);
+    }
+
+    options.rejectDuplicatePackets
+       = propertyTree.get<bool> ("Sanitizer.rejectDuplicatePackets",
+                                 options.rejectDuplicatePackets);
+    if (options.rejectDuplicatePackets)
+    {
+        auto circularBufferSize
+            = propertyTree.get_optional<int>
+              ("Sanitizer.duplicatePacketCircularBufferSize");
+        if (circularBufferSize) 
+        {
+            if (*circularBufferSize <= 0)
+            {
+                 throw std::invalid_argument(
+                    "duplicatePacketCircularBufferSize must be positive");
+            }
+            options.duplicatePacketDetectorOptions.setCircularBufferSize(
+                *circularBufferSize);
+        }
+        else
+        {
+            auto iTime
+                = propertyTree.get<int>
+                  ("Sanitizer.duplicatePacketCircularBufferDurationInSeconds",
+                   300);
+            if (iTime <= 0)
+            {
+                throw std::invalid_argument(
+                    "duplicatePacketCircularBufferDuration must be positive");
+            }
+            options.duplicatePacketDetectorOptions.setCircularBufferDuration(
+                std::chrono::seconds {iTime});
+        }
     }
 
     // Stream options 

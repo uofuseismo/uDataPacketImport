@@ -300,18 +300,28 @@ ExpiredPacketDetector::operator=(
 /// Destructor
 ExpiredPacketDetector::~ExpiredPacketDetector() = default;
 
-/// Does the work
+/// Allow expired packet?
 bool ExpiredPacketDetector::allow(
     const UDataPacketImport::Packet &packet) const
 {
     return pImpl->allow(packet);
 }
 
-/// Does the work
 bool ExpiredPacketDetector::allow(
     const UDataPacketImport::GRPC::Packet &packet) const
 {
     return pImpl->allow(packet);
 }
 
+bool ExpiredPacketDetector::operator()(
+    const UDataPacketImport::GRPC::Packet &packet) const
+{
+    return allow(packet);
+}
+
+bool ExpiredPacketDetector::operator()(
+    const UDataPacketImport::Packet &packet) const
+{
+    return allow(packet);
+}
 

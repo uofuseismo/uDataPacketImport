@@ -654,55 +654,6 @@ public:
 
 }
 
-/*
-void runServer(const ::ProgramOptions &options)
-{
-    std::signal(SIGINT, signalHandler);
-    std::signal(SIGTERM, signalHandler);
-
-    auto address = options.grpcHost + ":" 
-                 + std::to_string(options.grpcPort);
-
-    ServerImpl dataServer{options};
-
-    grpc::ServerBuilder builder;
-    if (options.grpcServerKey.empty() ||
-        options.grpcServerCertificate.empty())
-    {   
-        spdlog::info("Initiating non-secured server SEEDLink bbroadcast server");
-        builder.AddListeningPort(address,
-                                 grpc::InsecureServerCredentials());
-        builder.RegisterService(&dataServer);
-    }   
-    else
-    {   
-        spdlog::info("Creating secured SEEDLink broadcast server");
-        grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
-        {
-            options.grpcServerKey, // Private key
-            options.grpcServerCertificate // Public key (cert chain)
-        };
-        grpc::SslServerCredentialsOptions sslOptions; 
-        sslOptions.pem_key_cert_pairs.emplace_back(keyCertPair);
-        builder.AddListeningPort(address,
-                                 grpc::SslServerCredentials(sslOptions));
-        builder.RegisterService(&dataServer);
-    }   
-    std::unique_ptr<grpc::Server> grpcServer(builder.BuildAndStart());
-
-
-    dataServer.start();
-    //grpcServer->Start();
-    while (!terminateApplication)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds {100});
-    }
-    spdlog::info("Main thread exiting");
-    grpcServer->Shutdown();
-    dataServer.stop();
-}
-*/
-
 int main(int argc, char *argv[])
 {
     // Get the ini file from the command line
@@ -734,7 +685,6 @@ int main(int argc, char *argv[])
 
     try
     {
-        //::runServer(programOptions);
         ServerImpl server{programOptions};
         server.Run();
     }
@@ -744,20 +694,6 @@ int main(int argc, char *argv[])
                        + std::string {e.what()});
         return EXIT_FAILURE;
     }
-/*
-    std::unique_ptr<::Publisher> publisher{nullptr};
-    try 
-    {   
-        publisher = std::make_unique<::Publisher> (programOptions);
-    }   
-    catch (const std::exception &e) 
-    {   
-        spdlog::critical("Failed to create publisher; failed with "
-                       + std::string {e.what()});
-        return EXIT_FAILURE;
-    }   
-*/
-
     return EXIT_SUCCESS;
 }
 

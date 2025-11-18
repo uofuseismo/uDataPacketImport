@@ -53,6 +53,7 @@ set(LIBRARY_SRC proto/dataPacketBroadcast.proto
     src/grpc/streamOptions.cpp
     src/grpc/subscriptionManager.cpp
     src/grpc/subscriptionManagerOptions.cpp
+    src/sanitizer/duplicatePacketDetector.cpp
     src/sanitizer/expiredPacketDetector.cpp
     src/sanitizer/futurePacketDetector.cpp
     src/seedLink/clientOptions.cpp

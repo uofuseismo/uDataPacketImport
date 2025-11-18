@@ -292,18 +292,28 @@ FuturePacketDetector::operator=(
 /// Destructor
 FuturePacketDetector::~FuturePacketDetector() = default;
 
-/// Does the work
+/// Allow future packet?
 bool FuturePacketDetector::allow(
     const UDataPacketImport::Packet &packet) const
 {
     return pImpl->allow(packet);
 }
 
-/// Does the work
 bool FuturePacketDetector::allow(
     const UDataPacketImport::GRPC::Packet &packet) const
 {
     return pImpl->allow(packet);
 }
 
+bool FuturePacketDetector::operator()(
+    const UDataPacketImport::GRPC::Packet &packet) const
+{
+    return allow(packet);
+}
+
+bool FuturePacketDetector::operator()(
+    const UDataPacketImport::Packet &packet) const
+{
+    return allow(packet);
+}
 

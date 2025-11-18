@@ -70,10 +70,10 @@ Client must provide access token in x-custom-auth-token header field
         }
         catch (const std::exception &e) 
         {
-             spdlog::warn("Failed to subscribe because "
-                        + std::string {e.what()});
-             Finish(grpc::Status(grpc::StatusCode::INTERNAL,
-                                 "Failed to subscribe"));
+            spdlog::warn("Failed to subscribe because "
+                       + std::string {e.what()});
+            Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                "Failed to subscribe"));
         }
         // Start
         nextWrite();
@@ -108,7 +108,7 @@ Client must provide access token in x-custom-auth-token header field
          spdlog::debug("RPC cancelled for " + mPeer);
          if (mContext)
          {
-              mManager->unsubscribeFromAllOnCancel(mContext);
+             mManager->unsubscribeFromAllOnCancel(mContext);
          }
      }
 
@@ -183,6 +183,8 @@ private:
     bool mWriteInProgress{false};
 };
 
+//----------------------------------------------------------------------------//
+
 class AsynchronousWriterSubscribe :
     public grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet>
 {
@@ -195,6 +197,7 @@ public:
          std::atomic<bool> *keepRunning,
          const std::string &accessToken = "") :
              mContext(context),
+             mSubscriptionRequest(request),
              mManager(subscriptionManager),
              mKeepRunning(keepRunning)
     {
@@ -212,18 +215,33 @@ Client must provide access token in x-custom-auth-token header field
                 Finish(status);
             }
         }
+        // Ensure the client is requesting streams
+        if (mSubscriptionRequest == nullptr)
+        {
+            spdlog::critical("Subscription request pointer is null");
+            Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                "Failed to subscribe"));
+        }
+        if (mSubscriptionRequest->streams_size() == 0)
+        {
+            grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
+R"""(
+Client must provide specify at least one stream to which to subscribe.
+)"""};
+            Finish(status);
+        }
         // Subscribe
         try
         {
             spdlog::info("Subscribing " + mPeer);
-            mManager->subscribeToAll(context);
+            //mManager->subscribe(context, *mSubscriptionRequest); // TODO
         }
         catch (const std::exception &e) 
         {
-             spdlog::warn("Failed to subscribe because "
-                        + std::string {e.what()});
-             Finish(grpc::Status(grpc::StatusCode::INTERNAL,
-                                 "Failed to subscribe"));
+            spdlog::warn("Failed to subscribe because "
+                       + std::string {e.what()});
+            Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                "Failed to subscribe"));
         }
         // Start
         nextWrite();
@@ -248,7 +266,7 @@ Client must provide access token in x-custom-auth-token header field
          spdlog::debug("RPC completed for " + mPeer);
          if (mContext)
          {
-             mManager->unsubscribeFromAllOnCancel(mContext);
+             //mManager->unsubscribeFromAllOnCancel(mContext); TODO
          }
          delete this;
      }   
@@ -258,7 +276,7 @@ Client must provide access token in x-custom-auth-token header field
          spdlog::debug("RPC cancelled for " + mPeer);
          if (mContext)
          {
-              mManager->unsubscribeFromAllOnCancel(mContext);
+             //mManager->unsubscribeFromAllOnCancel(mContext); TODO
          }
      }
 
@@ -282,9 +300,10 @@ private:
             {
                 try
                 {
+/*
                     auto packetsBuffer
                         = mManager->getNextPacketsFromAllSubscriptions(
-                              mContext);
+                              mContext); // TODO
                     for (auto &packet : packetsBuffer)
                     {
                         if (mPacketsQueue.size() > mMaximumQueueSize)
@@ -295,6 +314,7 @@ private:
                          }
                          mPacketsQueue.push(std::move(packet));
                     }
+*/
                 }
                 catch (const std::exception &e)
                 {
@@ -324,6 +344,7 @@ private:
         Finish(grpc::Status::OK);
     }
     grpc::CallbackServerContext *mContext{nullptr};
+    const UDataPacketImport::GRPC::SubscriptionRequest *mSubscriptionRequest{nullptr};
     std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager> mManager{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
     std::queue<UDataPacketImport::GRPC::Packet> mPacketsQueue;

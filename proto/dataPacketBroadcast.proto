@@ -27,19 +27,22 @@ service SEEDLinkBroadcast
     /// Subscribes to the incoming packets.
     rpc Subscribe(SubscribeToAllStreamsRequest) returns(stream Packet) {};
     /// Unsubscirbes from the ihe incoming packet stream.
-    rpc Unsubscribe(UnsubscribeFromAllStreamsRequest) returns(UnsubscribeFromAllStreamsResponse);
+    //rpc Unsubscribe(UnsubscribeFromAllStreamsRequest) returns(UnsubscribeFromAllStreamsResponse);
 }
 
-/// This is a more nuanced broacast for supporting real-time applications.  As
-/// such this utility can attempt to suppress wonky data - future, latent,
-/// overlapping, and duplicate data. 
+/*!
+ * This is a more nuanced broacast for supporting real-time applications.  As
+ * such this utility can attempt to suppress wonky data - future, latent,
+ * overlapping, and duplicate data. 
+ */
 service RealTimeBroadcast
 {
     /// Gets the currently available streams.
     rpc GetAvailableStreams(AvailableStreamsRequest) returns(AvailableStreamsResponse) {}; 
     /// Subscribes to all incoming streams.
-    rpc SubscribeToAllStreams(SubscriptionRequest) returns(stream Packet) {};
- 
+    rpc SubscribeToAllStreams(SubscribeToAllStreamsRequest) returns(stream Packet) {};
+    /// Subscribes to a set of incoming streams.
+    rpc Subscribe(SubscriptionRequest) returns(stream Packet) {}; 
 }
 
 /*!

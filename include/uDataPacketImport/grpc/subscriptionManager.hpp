@@ -8,6 +8,7 @@ namespace UDataPacketImport::GRPC
   class StreamOptions;
   class UnsubscribeFromAllStreamsResponse;
   class UnsubscribeResponse;
+  class SubscriptionRequest;
   class SubscriptionManagerOptions;
 }
 namespace UDataPacketImport::GRPC
@@ -27,9 +28,15 @@ public:
     /// @name Client Interface
     /// @{
 
-    /// @brief Allows a client to subscribe to a stream.
+    /// @brief Allows a client to subscribe to all streams.
     void subscribeToAll(grpc::ServerContext *context);
     void subscribeToAll(grpc::CallbackServerContext *context);
+
+    /// @brief Allows a client to subsribe to a list of streams.
+    void subscribe(grpc::ServerContext *context,
+                   const SubscriptionRequest &request);
+    void subscribe(grpc::CallbackServerContext *context,
+                   const SubscriptionRequest &request);
 
     /// @brief Allows a client to unsubscribe from all streams.
     [[nodiscard]] UnsubscribeFromAllStreamsResponse

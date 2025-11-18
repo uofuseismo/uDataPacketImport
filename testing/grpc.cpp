@@ -10,7 +10,7 @@
 #include <limits>
 #include <thread>
 #include <grpcpp/grpcpp.h>
-#include "asyncronousWriter.hpp"
+#include "asynchronousWriter.hpp"
 #include "uDataPacketImport/grpc/subscriptionManager.hpp"
 #include "uDataPacketImport/grpc/subscriptionManagerOptions.hpp"
 #include "uDataPacketImport/grpc/streamOptions.hpp"
@@ -101,7 +101,7 @@ public:
     grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
     SubscribeToAllStreams(
         grpc::CallbackServerContext *context,
-        const UDataPacketImport::GRPC::SubscriptionRequest *request) override 
+        const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override 
     {
 /*
         class Writer : public grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> 
@@ -219,7 +219,8 @@ public:
             bool mWriteInProgress{false};
         };
 */
-        return new ::AsyncronousWriter(context, request, mManager, &mKeepRunning);
+        return new ::AsynchronousWriterSubscribeToAll(
+                      context, request, mManager, &mKeepRunning);
     }
 /*
     grpc::Status ListFeatures(ServerContext* context,
@@ -288,7 +289,7 @@ std::cout << "im here" << std::endl;
         = grpc::CreateChannel(CLIENT_HOST,
                               grpc::InsecureChannelCredentials());
     auto stub = UDataPacketImport::GRPC::RealTimeBroadcast::NewStub(channel);
-    UDataPacketImport::GRPC::SubscriptionRequest request;
+    UDataPacketImport::GRPC::SubscribeToAllStreamsRequest request;
     std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet> > reader(
         stub->SubscribeToAllStreams(&context, request));
 std::cout << "sub" << std::endl;

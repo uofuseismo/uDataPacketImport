@@ -256,7 +256,8 @@ public:
             try
             {
                 stream.second->subscribe(contextAddress);
- spdlog::info("Subscribed " + context->peer() + " to " + stream.second->getIdentifier());
+                spdlog::debug("Subscribed " + context->peer()
+                            + " to " + stream.second->getIdentifier());
             } 
             catch (const std::exception &e)
             {
