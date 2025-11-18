@@ -1,0 +1,18 @@
+# Purpose: Builds the uDataPacketImport software.
+# Usage: podman build -t umdbuilder:latest -f Dockerfile.u24
+#   or   buildah bud -t umdbuilder:latest -f Dockerfile.u24
+# 
+FROM quay.io/uuss/us8base:latest as udpibuilder
+
+RUN cd /home/ubuntu &&\
+    if [ -d uDataPacketImport ]; then rm -rf uDataPacketImport; fi &&\
+    git clone https://github.com/uofuseismo/uDataPacketImport.git &&\
+    cd uDataPacketImport &&\
+    mkdir build &&\
+    cd build &&\
+    export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/usr/local/grpc/lib/cmake/absl:/usr/local/grpc/lib/cmake/protobuf:/usr/local/grpc/lib/cmake/utf8_range &&\
+    cmake .. -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_FOR_DEBIAN=ON -DCMAKE_INSTALL_PREFIX=/usr/local/ -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++" &&\
+    make &&\
+    make install &&\
+    cpack
+

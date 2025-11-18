@@ -147,7 +147,6 @@ target_link_libraries(uPacketSanitizer
                               gRPC::grpc++_reflection
                               gRPC::grpcpp_otel_plugin
                               uDataPacketImport spdlog::spdlog_header_only
-                              #readerwriterqueue
                               Boost::boost Boost::program_options Threads::Threads)
 
 
@@ -245,7 +244,7 @@ if (${BUILD_FOR_DEBIAN})
    if (buildah_EXECUTABLE)
       add_custom_target(buildah
                         COMMENT "Preparing the container with buildah"
-                        COMMAND ${buildah_EXECUTABLE} bud -t umetadata:${PROJECT_VERSION} -t umetadata:latest -f ./Dockerfile.deb
+                        COMMAND ${buildah_EXECUTABLE} bud -t udatapacketimport:${PROJECT_VERSION} -t udatapacketimport:latest -f ./Dockerfile.deb
                         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
       add_dependencies(buildah ${PROJECT_NAME}-deb)
    endif()

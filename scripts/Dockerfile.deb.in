@@ -1,0 +1,17 @@
+# Purpose: Creates the container for running the uDataPacketImport software.
+# Usage: podman build -t udatapacketimport:latest -f Dockerfile.deb
+#        buildah bud -t udatapacketimport:latest -f Dockerfile.deb
+FROM ubuntu:24.04
+ADD uMetadata-@PROJECT_VERSION@-Linux.deb .
+RUN apt-get update &&\
+    apt-get upgrade -y &&\
+    apt-get autoremove -y &&\
+    apt-get autoclean -y &&\
+    apt-get -y install bash &&\
+    apt-get -y --no-install-recommends install ./uDataPacketImport-@PROJECT_VERSION@-Linux.deb &&\
+    apt-get autoremove -y &&\
+    apt-get clean &&\
+    rm -r /var/lib/apt/lists/* uDataPacketImport-@PROJECT_VERSION@-Linux.deb
+
+RUN useradd -ms /bin/bash uDataPacketImport
+WORKDIR /home/uDataPacketImport
