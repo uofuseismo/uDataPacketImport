@@ -49,6 +49,7 @@ set(LIBRARY_SRC proto/dataPacketBroadcast.proto
     src/streamIdentifier.cpp
     src/packet.cpp
     src/acquisition.cpp 
+    src/grpc/client.cpp
     src/grpc/stream.cpp
     src/grpc/streamOptions.cpp
     src/grpc/subscriptionManager.cpp

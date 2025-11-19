@@ -17,6 +17,26 @@
 
 using namespace UDataPacketImport::GRPC;
 
+namespace
+{
+std::set<UDataPacketImport::StreamIdentifier> 
+    toSet(const UDataPacketImport::GRPC::SubscriptionRequest &request)
+{
+    std::set<UDataPacketImport::StreamIdentifier> identifiers;
+    for (const auto &grpcStreamIdentifier : request.streams())
+    {   
+        UDataPacketImport::StreamIdentifier identifier{grpcStreamIdentifier};
+        // N.B. insert does nothing if key exists
+        identifiers.insert(std::move(identifier));
+    }
+    if (identifiers.empty())
+    {
+        throw std::invalid_argument("No streams requested in subscription");
+    }
+    return identifiers;
+}
+}
+
 class SubscriptionManager::SubscriptionManagerImpl
 {
 public:
@@ -239,10 +259,140 @@ public:
         mPendingServerContextSubscribeToAll.erase(context);
         }
         return response;
-    }   
+    }
+    /// Asynchronous subscribe to streams
+    void subscribe(grpc::CallbackServerContext *context,
+                   const std::set<UDataPacketImport::StreamIdentifier>
+                       &streamIdentifiers)
+    {
+        if (streamIdentifiers.empty()){return;}
+        auto contextAddress = reinterpret_cast<uintptr_t> (context);
+        auto peer = context->peer();
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        for (const auto &streamIdentifier : streamIdentifiers)
+        {
+            auto streamIdentifierString = streamIdentifier.toString();
+            auto idx = mStreamsMap.find(streamIdentifierString);
+            if (idx != mStreamsMap.end())
+            {
+                try
+                {
+                 
+                    idx->second->subscribe(contextAddress);
+                    spdlog::debug("Subscribed " + peer
+                                + " to " + streamIdentifierString);
+                }
+                catch (const std::exception &e)
+                {
+                    spdlog::warn("Failed to subscribe "
+                               + peer + " to "
+                               + streamIdentifierString + " because "
+                               + std::string {e.what()});
+                }
+            }
+            else
+            {
+                // Check our pending subscriptions for this context
+                auto jdx
+                    = mPendingCallbackServerContextSubscriptions.find(context);
+                if (jdx != mPendingCallbackServerContextSubscriptions.end())
+                {
+                    // The context already has this subscription pending
+                    if (jdx->second.contains(streamIdentifier))
+                    {
+                        spdlog::debug(peer
+                                    + " already has a pending subscription for " 
+                                    + streamIdentifierString);
+                    }
+                    else
+                    {
+                        // Now it's pending
+                        jdx->second.insert(streamIdentifier); 
+                    }
+                }
+                else
+                {
+                    // Need a new context with a new pending subscription
+                    std::set<UDataPacketImport::StreamIdentifier>
+                        tempSet{streamIdentifier};
+                    mPendingCallbackServerContextSubscriptions.insert(
+                        std::pair {context, std::move(tempSet)}
+                    ); 
+                }
+            }
+        }
+        }
+    }
+    /// Synchronous subscribe to streams
+    void subscribe(grpc::ServerContext *context,
+                   const std::set<UDataPacketImport::StreamIdentifier>
+                       &streamIdentifiers)
+    {
+        if (streamIdentifiers.empty()){return;}
+        auto contextAddress = reinterpret_cast<uintptr_t> (context);
+        auto peer = context->peer();
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        for (const auto &streamIdentifier : streamIdentifiers)
+        {
+            auto streamIdentifierString = streamIdentifier.toString();
+            auto idx = mStreamsMap.find(streamIdentifierString);
+            if (idx != mStreamsMap.end())
+            {
+                try
+                {   
+             
+                    idx->second->subscribe(contextAddress);
+                    spdlog::debug("Subscribed " + peer
+                                + " to " + streamIdentifierString);
+                }   
+                catch (const std::exception &e) 
+                {   
+                    spdlog::warn("Failed to subscribe "
+                               + peer + " to "
+                               + streamIdentifierString + " because "
+                               + std::string {e.what()});
+                }   
+            }
+            else
+            {   
+                // Check our pending subscriptions for this context
+                auto jdx 
+                    = mPendingServerContextSubscriptions.find(context);
+                if (jdx != mPendingServerContextSubscriptions.end())
+                {
+                    // The context already has this subscription pending
+                    if (jdx->second.contains(streamIdentifier))
+                    {
+                        spdlog::debug(peer
+                                    + " already has a pending subscription for "
+                                    + streamIdentifierString);
+                    } 
+                    else
+                    {
+                        // Now it's pending
+                        jdx->second.insert(streamIdentifier); 
+                    }
+                }   
+                else
+                {
+                    // Need a new context with a new pending subscription
+                    std::set<UDataPacketImport::StreamIdentifier>
+                        tempSet{streamIdentifier};
+                    mPendingServerContextSubscriptions.insert(
+                        std::pair {context, std::move(tempSet)}
+                    );
+                }
+            }
+        }
+    } 
+    }
+
     /// Asynchronous subscribe to all streams 
     void subscribeToAll(grpc::CallbackServerContext *context)
     {
+        auto peer = context->peer();
         {
         std::lock_guard<std::mutex> lock(mMutex);
         if (mPendingCallbackServerContextSubscribeToAll.contains(context))
@@ -256,13 +406,13 @@ public:
             try
             {
                 stream.second->subscribe(contextAddress);
-                spdlog::debug("Subscribed " + context->peer()
+                spdlog::debug("Subscribed " + peer
                             + " to " + stream.second->getIdentifier());
             } 
             catch (const std::exception &e)
             {
                 spdlog::warn("Failed to subscribe "
-                           + context->peer() + " to " 
+                           + peer + " to " 
                            + stream.first + " because "
                            + std::string {e.what()});
             }
@@ -272,7 +422,8 @@ public:
     }
     /// Synchronous subsribe to all streams
     void subscribeToAll(grpc::ServerContext *context)
-    {   
+    {
+        auto peer = context->peer();
         {   
         std::lock_guard<std::mutex> lock(mMutex);
         if (mPendingServerContextSubscribeToAll.contains(context))
@@ -285,11 +436,13 @@ public:
             try 
             {
                 stream.second->subscribe(contextAddress);
+                spdlog::debug("Subscribed " + peer
+                            + " to " + stream.second->getIdentifier());
             }
             catch (const std::exception &e) 
             {   
                 spdlog::warn("Failed to subscribe "
-                           + context->peer() + " to " 
+                           + peer + " to " 
                            + stream.first + " because "
                            + std::string {e.what()});
             }   
@@ -326,7 +479,7 @@ public:
     [[nodiscard]] UDataPacketImport::GRPC::UnsubscribeResponse
         unsubscribe(grpc::ServerContext *context,
                     const UnsubscribeRequest &request)
-    {   
+    {
         UDataPacketImport::StreamIdentifier
             streamIdentifier{request.stream_identifier()};
         auto streamIdentifierString = streamIdentifier.toString();
@@ -346,14 +499,48 @@ public:
         mPendingServerContextSubscriptions.erase(context); 
         }
         return response;
-    }   
+    }
+    /// Get next packet for a particular context
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+        getNextPackets(const uintptr_t contextAddress,
+                       const std::set<UDataPacketImport::StreamIdentifier> &identifiers) const noexcept
+    {
+        std::vector<UDataPacketImport::GRPC::Packet> result;
+        result.reserve(32);
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        for (const auto &identifier : identifiers)
+        {
+            auto idx = mStreamsMap.find(identifier.getStringReference());
+            if (idx != mStreamsMap.end())
+            {
+#ifndef NDEBUG
+                assert(idx->second->isSubscribed(contextAddress));
+#endif
+                for (int i = 0; i < std::numeric_limits<int>::max(); ++i)
+                {
+                    auto packet = idx->second->getNextPacket(contextAddress);
+                    if (packet)
+                    {
+                        result.push_back(std::move(*packet));
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            } // End check on subscribed
+        }
+        }
+        return result;
+    }
     /// Get next packet
     [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
-        getNextPacketsFromAllSubsriptions(
+        getNextPacketsFromAllSubscriptions(
             const uintptr_t contextAddress) const noexcept
     {
         std::vector<UDataPacketImport::GRPC::Packet> result;
-        result.reserve(64);
+        result.reserve(32);
         {
         std::lock_guard<std::mutex> lock(mMutex);
         for (const auto &stream : mStreamsMap)
@@ -449,6 +636,22 @@ void SubscriptionManager::unsubscribeFromAll(
 }
 */
 
+/// Subscribe
+void SubscriptionManager::subscribe(
+    grpc::ServerContext *context,
+    const UDataPacketImport::GRPC::SubscriptionRequest &request)
+{
+    auto identifiers = ::toSet(request); // Throws
+    pImpl->subscribe(context, identifiers);
+}
+
+void SubscriptionManager::subscribe(
+    grpc::CallbackServerContext *context,
+    const UDataPacketImport::GRPC::SubscriptionRequest &request)
+{
+    auto identifiers = ::toSet(request); // Throws
+    pImpl->subscribe(context, identifiers);
+}
 
 /// Subscribe to all
 void SubscriptionManager::subscribeToAll(
@@ -544,8 +747,21 @@ std::vector<UDataPacketImport::GRPC::Packet>
         throw std::invalid_argument("Callback server context is null");
     }
     auto contextAddress = reinterpret_cast<uintptr_t> (context);
-    return pImpl->getNextPacketsFromAllSubsriptions(contextAddress);
+    return pImpl->getNextPacketsFromAllSubscriptions(contextAddress);
 }
+
+std::vector<UDataPacketImport::GRPC::Packet>
+    SubscriptionManager::getNextPackets(
+    grpc::CallbackServerContext *context,
+    const std::set<UDataPacketImport::StreamIdentifier> &subscriptions) const
+{           
+    if (context == nullptr)
+    {                          
+        throw std::invalid_argument("Callback server context is null");
+    }
+    auto contextAddress = reinterpret_cast<uintptr_t> (context);
+    return pImpl->getNextPackets(contextAddress, subscriptions);
+}    
 
 std::vector<UDataPacketImport::GRPC::Packet>
     SubscriptionManager::getNextPacketsFromAllSubscriptions(
@@ -556,9 +772,10 @@ std::vector<UDataPacketImport::GRPC::Packet>
         throw std::invalid_argument("Callback server context is null");
     }   
     auto contextAddress = reinterpret_cast<uintptr_t> (context);
-    return pImpl->getNextPacketsFromAllSubsriptions(contextAddress);
+    return pImpl->getNextPacketsFromAllSubscriptions(contextAddress);
 }       
 
+/// Allows server to purge all clients
 void SubscriptionManager::unsubscribeAll()
 {
     pImpl->unsubscribeAll();

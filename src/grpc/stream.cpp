@@ -257,7 +257,7 @@ public:
     }
     // Convenience function for subscriber to get next packet 
     [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
-        getNextPacket(const uintptr_t contextAddress) const noexcept //grpc::CallbackServerContext *context) const noexcept
+        getNextPacket(const uintptr_t contextAddress) const noexcept
     {
         UDataPacketImport::GRPC::Packet packet;
         bool notFound{false};
@@ -284,6 +284,12 @@ public:
     {
         std::lock_guard<std::mutex> lock(mMutex);
         return static_cast<int> (mSubscribers.size());
+    }
+    [[nodiscard]]
+    bool isSubscribed(const uintptr_t contextAddress) const noexcept
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        return mSubscribers.contains(contextAddress);
     }
 
     mutable std::mutex mMutex; 
@@ -388,6 +394,12 @@ int Stream::getNumberOfSubscribers() const noexcept
     return pImpl->getNumberOfSubscribers();
 }
 
+/// Subscribed?
+bool Stream::isSubscribed(const uintptr_t contextAddress) const noexcept
+{
+    return pImpl->isSubscribed(contextAddress);
+}
+
 /// Comparison
 bool UDataPacketImport::GRPC::operator<(const Stream &lhs, const Stream &rhs)
 {
@@ -398,3 +410,4 @@ void Stream::unsubscribeAll()
 {
     pImpl->unsubscribeAll();    
 }
+

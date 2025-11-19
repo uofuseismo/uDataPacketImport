@@ -2,12 +2,14 @@
 #define UDATA_PACKET_IMPORT_WRITER_HPP
 #include <atomic>
 #include <chrono>
+#include <set>
 #include <string>
 #include <queue>
 #include <memory>
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
 #include "uDataPacketImport/grpc/subscriptionManager.hpp"
+#include "uDataPacketImport/streamIdentifier.hpp"
 #include "proto/dataPacketBroadcast.pb.h"
 #include "proto/dataPacketBroadcast.grpc.pb.h"
 
@@ -79,12 +81,24 @@ Client must provide access token in x-custom-auth-token header field
         nextWrite();
      }
 
+     ~AsynchronousWriterSubscribeToAll()
+     {
+        spdlog::debug("In destructor");
+     }
+
      void OnWriteDone(bool ok) override 
      {
         if (!ok) 
         {
-            Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
-                                "Unexpected Failure"));
+            if (mContext)
+            {   
+                if (mContext->IsCancelled())
+                {   
+                    return Finish(grpc::Status::CANCELLED);
+                }
+            }   
+            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                       "Unexpected failure"));
         }
         // Packet is flushed; can now safely purge the element to write
         mWriteInProgress = false;
@@ -92,7 +106,9 @@ Client must provide access token in x-custom-auth-token header field
         // Start next write
         nextWrite();
      }   
-
+     // This needs to perform quickly.  I should do blocking work but
+     // this is my last ditch effort to evict the context from the 
+     // subscription manager..
      void OnDone() override 
      {
          spdlog::info("Subscribe to all RPC completed for " + mPeer);
@@ -116,8 +132,11 @@ private:
     void nextWrite() 
     {
         // Keep running either until the server or client quits
-        while (mKeepRunning->load() && !mContext->IsCancelled())
+        while (mKeepRunning->load())
         {
+            // Cancel means we leave now
+            if (mContext->IsCancelled()){break;}
+
             // Get any remaining packets on the queue on the wire
             if (!mPacketsQueue.empty() && !mWriteInProgress)
             {
@@ -158,20 +177,32 @@ private:
             {
                 std::this_thread::sleep_for(mTimeOut);
             }
-        } // Loop on server/client
-        if (mContext->IsCancelled())
+        } // Loop on server still running
+        if (mContext)
         {
-            spdlog::info("Terminating acquisition for " 
-                        + mContext->peer()
-                        + " because of client side cancel");
+            // The context is still valid so try to remove it from the
+            // subscriptoins.  This can be the case whether the server is
+            // shutting down or the client bailed.
+            mManager->unsubscribeFromAllOnCancel(mContext);
+            if (mContext->IsCancelled())
+            {
+                spdlog::info("Terminating acquisition for " 
+                           + mPeer
+                           + " because of client side cancel");
+                Finish(grpc::Status::CANCELLED);
+            }
+            else
+            {
+                spdlog::info("Terminating acquisition for "
+                           + mPeer
+                           + " because of server side cancel");
+                Finish(grpc::Status::OK);
+            }
         }
         else
         {
-            spdlog::info("Terminating acquisition for "
-                        + mContext->peer()
-                        + " because of server side cancel");
+            spdlog::warn("The context for " + mPeer + " has disappeared");
         }
-        Finish(grpc::Status::OK);
     }
     grpc::CallbackServerContext *mContext{nullptr};
     std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager> mManager{nullptr};
@@ -197,7 +228,7 @@ public:
          std::atomic<bool> *keepRunning,
          const std::string &accessToken = "") :
              mContext(context),
-             mSubscriptionRequest(request),
+             mSubscriptionRequest(*request),
              mManager(subscriptionManager),
              mKeepRunning(keepRunning)
     {
@@ -216,13 +247,7 @@ Client must provide access token in x-custom-auth-token header field
             }
         }
         // Ensure the client is requesting streams
-        if (mSubscriptionRequest == nullptr)
-        {
-            spdlog::critical("Subscription request pointer is null");
-            Finish(grpc::Status(grpc::StatusCode::INTERNAL,
-                                "Failed to subscribe"));
-        }
-        if (mSubscriptionRequest->streams_size() == 0)
+        if (mSubscriptionRequest.streams_size() == 0)
         {
             grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
 R"""(
@@ -234,7 +259,19 @@ Client must provide specify at least one stream to which to subscribe.
         try
         {
             spdlog::info("Subscribing " + mPeer);
-            //mManager->subscribe(context, *mSubscriptionRequest); // TODO
+            mManager->subscribe(context, mSubscriptionRequest);
+            for (const auto &stream : mSubscriptionRequest.streams())
+            {
+                mStreamIdentifiers.insert( 
+                    UDataPacketImport::StreamIdentifier {stream});
+            }
+        }
+        catch (const std::invalid_argument &e)
+        {
+            spdlog::warn("Failed to subscribe because of invalid request "
+                       + std::string {e.what()});
+            Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                           "Malformed request - check the stream identifiers"));
         }
         catch (const std::exception &e) 
         {
@@ -251,8 +288,15 @@ Client must provide specify at least one stream to which to subscribe.
      {
         if (!ok) 
         {
-            Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
-                                "Unexpected Failure"));
+            if (mContext)
+            {
+                if (mContext->IsCancelled())
+                {
+                    return Finish(grpc::Status::CANCELLED);
+                }
+            }
+            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                       "Unexpected Failure"));
         }
         // Packet is flushed; can now safely purge the element to write
         mWriteInProgress = false;
@@ -263,20 +307,20 @@ Client must provide specify at least one stream to which to subscribe.
 
      void OnDone() override 
      {
-         spdlog::debug("RPC completed for " + mPeer);
+         spdlog::debug("Subscribe RPC completed for " + mPeer);
          if (mContext)
          {
-             //mManager->unsubscribeFromAllOnCancel(mContext); TODO
+             mManager->unsubscribeOnCancel(mContext, mSubscriptionRequest);
          }
          delete this;
      }   
 
      void OnCancel() override 
      { 
-         spdlog::debug("RPC cancelled for " + mPeer);
+         spdlog::debug("Subscribe RPC cancelled for " + mPeer);
          if (mContext)
          {
-             //mManager->unsubscribeFromAllOnCancel(mContext); TODO
+             mManager->unsubscribeOnCancel(mContext, mSubscriptionRequest);
          }
      }
 
@@ -300,10 +344,9 @@ private:
             {
                 try
                 {
-/*
                     auto packetsBuffer
-                        = mManager->getNextPacketsFromAllSubscriptions(
-                              mContext); // TODO
+                        = mManager->getNextPackets(mContext,
+                                                   mStreamIdentifiers);
                     for (auto &packet : packetsBuffer)
                     {
                         if (mPacketsQueue.size() > mMaximumQueueSize)
@@ -314,7 +357,6 @@ private:
                          }
                          mPacketsQueue.push(std::move(packet));
                     }
-*/
                 }
                 catch (const std::exception &e)
                 {
@@ -328,26 +370,38 @@ private:
             {
                 std::this_thread::sleep_for(mTimeOut);
             }
-        } // Loop on server/client
-        if (mContext->IsCancelled())
+        } // Loop on server still running
+        if (mContext)
         {
-            spdlog::debug("Terminating acquisition for " 
-                        + mContext->peer()
-                        + " because of client side cancel");
+            // The context is still valid so try to remove from the
+            // subscriptions.  This can be the case whether the server is
+            // shutting down or the client bailed.
+            mManager->unsubscribeFromAllOnCancel(mContext);
+            if (mContext->IsCancelled())
+            {
+                spdlog::debug("Terminating acquisition for " 
+                            + mPeer
+                            + " because of client side cancel");
+            }
+            else
+            {
+                spdlog::debug("Terminating acquisition for "
+                            + mPeer
+                            + " because of server side cancel");
+            }
         }
         else
         {
-            spdlog::debug("Terminating acquisition for "
-                        + mContext->peer()
-                        + " because of server side cancel");
+            spdlog::warn("Context has disappeared for " + mPeer);
         }
         Finish(grpc::Status::OK);
     }
     grpc::CallbackServerContext *mContext{nullptr};
-    const UDataPacketImport::GRPC::SubscriptionRequest *mSubscriptionRequest{nullptr};
+    UDataPacketImport::GRPC::SubscriptionRequest mSubscriptionRequest;
     std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager> mManager{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
     std::queue<UDataPacketImport::GRPC::Packet> mPacketsQueue;
+    std::set<UDataPacketImport::StreamIdentifier> mStreamIdentifiers;
     std::string mPeer;
     std::chrono::milliseconds mTimeOut{20};
     size_t mMaximumQueueSize{2048};

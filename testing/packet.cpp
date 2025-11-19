@@ -30,6 +30,7 @@ TEST_CASE("UDataPacketImport::StreamIdentifier", "[streamIdentifier]")
     REQUIRE(identifier.getChannel() == channel);
     REQUIRE(identifier.getLocationCode() == locationCode);
     REQUIRE(identifier.toString() == "UU.FTU.HHN.01");
+    REQUIRE(identifier.getStringReference() == "UU.FTU.HHN.01");
 
     SECTION("From Protobuf")
     {

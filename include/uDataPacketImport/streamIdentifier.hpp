@@ -79,6 +79,7 @@ public:
     /// @throws std::runtime_error if the network, station, channel, or location
     ///         code is not set.
     [[nodiscard]] std::string toString() const;
+    [[nodiscard]] const std::string &getStringReference() const;
     /// @result A string view representation of the identifier encoded as
     /// @throws std::runtime_error if the network, station, channel, or location
     ///         code is not set.

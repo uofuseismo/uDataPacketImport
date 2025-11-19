@@ -3,6 +3,7 @@
 #include <string>
 #include <random>
 #include <cmath>
+#include <numeric>
 #include "uDataPacketImport/sanitizer/expiredPacketDetector.hpp"
 #include "uDataPacketImport/sanitizer/futurePacketDetector.hpp"
 #include "uDataPacketImport/sanitizer/duplicatePacketDetector.hpp"
@@ -72,8 +73,12 @@ TEST_CASE("UDataPacketImport::Sanitizer::ExpiredPacketDetector",
     UDataPacketImport::Packet packet;
     packet.setStreamIdentifier(identifier);
     packet.setSamplingRate(100.0);
-    packet.setData(std::vector<int64_t> {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-    constexpr std::chrono::microseconds maxExpiredTime{1000};
+    // N.B. valgrind runs too slow - can either lower the sampling rate or
+    // make the packet longer
+    std::vector<int64_t> packetData(100);
+    std::iota(packetData.begin(), packetData.end(), 1);
+    packet.setData(packetData);
+    constexpr std::chrono::microseconds maxExpiredTime{10000}; // 0.01 seconds (packet duration is 0.99 s)
     constexpr std::chrono::seconds logBadDataInterval{-1};
     UDataPacketImport::Sanitizer::ExpiredPacketDetectorOptions options;
     options.setMaxExpiredTime(maxExpiredTime);
@@ -88,8 +93,8 @@ TEST_CASE("UDataPacketImport::Sanitizer::ExpiredPacketDetector",
         auto nowMuSeconds
             = std::chrono::time_point_cast<std::chrono::microseconds>
               (now).time_since_epoch();
-        packet.setStartTime(std::chrono::microseconds {nowMuSeconds});
-        REQUIRE(detector.allow(packet));
+        packet.setStartTime(nowMuSeconds); //std::chrono::microseconds {nowMuSeconds});
+        REQUIRE(detector.allow(packet)); // Fails in valgrind if packet is too small
         REQUIRE(detector.allow(packet.toProtobuf()));
     }
     SECTION("ExpiredData")

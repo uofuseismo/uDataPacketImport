@@ -2,6 +2,10 @@
 #define UDATA_PACKET_IMPORT_GRPC_SUBSCRIPTION_MANAGER_HPP
 #include <grpcpp/grpcpp.h>
 #include <memory>
+namespace UDataPacketImport
+{
+  class StreamIdentifier;
+}
 namespace UDataPacketImport::GRPC
 {
   class Packet;
@@ -38,19 +42,38 @@ public:
     void subscribe(grpc::CallbackServerContext *context,
                    const SubscriptionRequest &request);
 
-    /// @brief Allows a client to unsubscribe from all streams.
-    [[nodiscard]] UnsubscribeFromAllStreamsResponse
+    /// @brief Allows a client to unsubscribe from all streams. 
+    [[deprecated]] [[nodiscard]] UnsubscribeFromAllStreamsResponse
         unsubscribeFromAll(grpc::ServerContext *context);
-    [[nodiscard]] UnsubscribeFromAllStreamsResponse
+    [[deprecated]] [[nodiscard]] UnsubscribeFromAllStreamsResponse
         unsubscribeFromAll(grpc::CallbackServerContext *context);
+
+    /// @brief Allows a client to unsubscribe from all streams.
     void unsubscribeFromAllOnCancel(grpc::ServerContext *context);
     void unsubscribeFromAllOnCancel(grpc::CallbackServerContext *context);
 
-    /// @brief Allows a client to unsubscribe from a stream.
-    [[nodiscard]] UnsubscribeResponse unsubscribe(uintptr_t contextAddress);
-    [[nodiscard]] UnsubscribeResponse
-        unsubscribe(grpc::ServerContext *context);
-    [[nodiscard]] UnsubscribeResponse unsubscribe(grpc::CallbackServerContext *context);
+    /// @brief Allows a client to unsubscribe.
+    void unsubscribeOnCancel(grpc::ServerContext *context,
+                             const SubscriptionRequest &initialRequest);
+    void unsubscribeOnCancel(grpc::CallbackServerContext *context,
+                             const SubscriptionRequest &initialRequest);
+
+
+    /// @brief Allows a client to unsubscribe from streams. 
+    [[deprecated]] [[nodiscard]] UnsubscribeResponse
+        unsubscribe(uintptr_t contextAddress,
+                    const SubscriptionRequest &initialRequest);
+    [[deprecated]] [[nodiscard]] UnsubscribeResponse
+        unsubscribe(grpc::ServerContext *context,
+                    const SubscriptionRequest &initialRequest);
+    [[deprecated]] [[nodiscard]] UnsubscribeResponse
+        unsubscribe(grpc::CallbackServerContext *context,
+                    const SubscriptionRequest &initialRequest);
+
+    /// TODO Need to manage subscriptions better 
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+        getNextPackets(grpc::CallbackServerContext *context,
+                       const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers) const;
 
     [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
         getNextPacketsFromAllSubscriptions(grpc::CallbackServerContext *context) const;

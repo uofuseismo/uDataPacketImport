@@ -220,6 +220,21 @@ std::string StreamIdentifier::toString() const
     return pImpl->mString;
 }
 
+const std::string &StreamIdentifier::getStringReference() const
+{
+    if (pImpl->mString.empty())
+    {   
+        if (!hasNetwork()){throw std::runtime_error("Network not set");}
+        if (!hasStation()){throw std::runtime_error("Station not set");}
+        if (!hasChannel()){throw std::runtime_error("Channel not set");}
+        if (!hasLocationCode())
+        {   
+            throw std::runtime_error("Location code not set");
+        }   
+    }   
+    return *&pImpl->mString;
+}
+
 const std::string_view StreamIdentifier::toStringView() const
 {
     if (pImpl->mString.empty())

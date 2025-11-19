@@ -40,7 +40,7 @@ public:
 
     /// @brief Gets the next packet from the stream.
     [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
-         getNextPacket(const uintptr_t contextAddress) const noexcept;
+         getNextPacket(uintptr_t contextAddress) const noexcept;
     /// @result Gets the current number of subscribers.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept;
 
@@ -53,6 +53,8 @@ public:
     ///       grpc::CallbackServerContext *context;
     ///       auto contextAddress = reinterpret_cast<uintptr_t> (context);
     void subscribe(uintptr_t contextAddress);
+    /// @result True indicates the context is subscribed.
+    [[nodiscard]] bool isSubscribed(uintptr_t contextAddress) const noexcept;
     /// @brief Subscribes to the stream.
     //void subscribe(grpc::CallbackServerContext *context);    
 

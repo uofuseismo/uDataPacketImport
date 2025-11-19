@@ -313,7 +313,12 @@ if (doCancel){context.TryCancel();}
     if (status.ok()) {
       std::cout << "SubscribeToAll rpc succeeded." << std::endl;
     } else {
-      std::cout << "SubscribeToAll rpc failed." << std::endl;
+      if (status.error_code() == grpc::StatusCode::CANCELLED){
+        std::cout << "SubscribeToAll canceled by client" << std::endl;
+      }
+      else {
+        std::cout << "SubscribeToAll rpc failed." << std::endl;
+      }
     }   
 
 }
