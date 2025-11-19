@@ -310,7 +310,7 @@ Client must provide specify at least one stream to which to subscribe.
          spdlog::debug("Subscribe RPC completed for " + mPeer);
          if (mContext)
          {
-             mManager->unsubscribeOnCancel(mContext, mSubscriptionRequest);
+             mManager->unsubscribeOnCancel(mContext, mStreamIdentifiers);
          }
          delete this;
      }   
@@ -320,7 +320,7 @@ Client must provide specify at least one stream to which to subscribe.
          spdlog::debug("Subscribe RPC cancelled for " + mPeer);
          if (mContext)
          {
-             mManager->unsubscribeOnCancel(mContext, mSubscriptionRequest);
+             mManager->unsubscribeOnCancel(mContext, mStreamIdentifiers);
          }
      }
 
@@ -376,7 +376,7 @@ private:
             // The context is still valid so try to remove from the
             // subscriptions.  This can be the case whether the server is
             // shutting down or the client bailed.
-            mManager->unsubscribeFromAllOnCancel(mContext);
+            mManager->unsubscribeOnCancel(mContext, mStreamIdentifiers);
             if (mContext->IsCancelled())
             {
                 spdlog::debug("Terminating acquisition for " 

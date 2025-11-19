@@ -219,6 +219,19 @@ blind a broadcast if very future data is encountered because of a GPS slip.
     }
 
     grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    Subscribe(
+        grpc::CallbackServerContext *context,
+        const UDataPacketImport::GRPC::SubscriptionRequest *request) override
+    {   
+        return new ::AsynchronousWriterSubscribe(
+                      context,
+                      request,
+                      mBroadcastSubscriptionManager,
+                      &mKeepRunning,
+                      mOptions.grpcServerToken);
+    }   
+
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
     SubscribeToAllStreams(
         grpc::CallbackServerContext *context,
         const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override

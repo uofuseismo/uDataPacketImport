@@ -54,9 +54,9 @@ public:
 
     /// @brief Allows a client to unsubscribe.
     void unsubscribeOnCancel(grpc::ServerContext *context,
-                             const SubscriptionRequest &initialRequest);
+                             const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
     void unsubscribeOnCancel(grpc::CallbackServerContext *context,
-                             const SubscriptionRequest &initialRequest);
+                             const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
 
 
     /// @brief Allows a client to unsubscribe from streams. 

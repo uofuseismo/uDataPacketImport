@@ -389,6 +389,38 @@ public:
     } 
     }
 
+    void unsubscribeOnCancel(
+        grpc::CallbackServerContext *context,
+        const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers)
+    {
+        auto contextAddress = reinterpret_cast<uintptr_t> (context);
+        auto peer = context->peer();
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        for (const auto &streamIdentifier : streamIdentifiers)
+        {
+            const auto streamIdentifierString = streamIdentifier.getStringReference();
+            auto idx = mStreamsMap.find(streamIdentifierString);
+            if (idx != mStreamsMap.end())
+            {
+                try
+                {
+                    idx->second->unsubscribe(contextAddress);
+                    spdlog::debug("Unsubscribed " + peer
+                                + " from " + streamIdentifierString);
+                }
+                catch (const std::exception &e)
+                {
+                    spdlog::warn("Failed to unsubsribe " + peer
+                               + " from " + streamIdentifierString
+                               + " because " + std::string {e.what()});
+                }
+            }
+        }
+        mPendingCallbackServerContextSubscriptions.erase(context);
+        }
+    }
+
     /// Asynchronous subscribe to all streams 
     void subscribeToAll(grpc::CallbackServerContext *context)
     {
@@ -672,6 +704,18 @@ void SubscriptionManager::subscribeToAll(
         throw std::invalid_argument("Callback server context is null");
     }   
     pImpl->subscribeToAll(context);
+}
+
+/// Unsbubscribe 
+void SubscriptionManager::unsubscribeOnCancel(
+    grpc::CallbackServerContext *context,
+    const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers)
+{
+    if (context == nullptr)
+    {
+        throw std::invalid_argument("Callback server context is null");
+    }
+    pImpl->unsubscribeOnCancel(context, streamIdentifiers);
 }
 
 /// Unsubscribe from all
