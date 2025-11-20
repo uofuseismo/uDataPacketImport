@@ -81,10 +81,10 @@ public:
     /// @throw std::runtime_error if the path to the state cannot be made.
     void setStateFile(const std::filesystem::path &stateFile);
     /// @result The path to the state file.
-    /// @throws std::runtime_error if \c haveStateFile() is false.
+    /// @throws std::runtime_error if \c hasStateFile() is false.
     [[nodiscard]] std::filesystem::path getStateFile() const; 
     /// @result True indicates the state file was set.
-    [[nodiscard]] bool haveStateFile() const noexcept;
+    [[nodiscard]] bool hasStateFile() const noexcept;
 
     /// @brief Controls the interval in which the state file is written.
     /// @param[in] interval   After this many packets are written the state

@@ -45,10 +45,12 @@ public:
          std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
              &subscriptionManager,
          std::atomic<bool> *keepRunning,
-         const std::string &accessToken = "") :
+         const std::string &accessToken = "",
+         const int maximumNumberOfSubscribers = 128) :
              mContext(context),
              mManager(subscriptionManager),
-             mKeepRunning(keepRunning)
+             mKeepRunning(keepRunning),
+             mMaximumNumberOfSubscribers(maximumNumberOfSubscribers)
     {
         // Authenticate
         mPeer = context->peer();
@@ -67,8 +69,21 @@ Client must provide access token in x-custom-auth-token header field
         // Subscribe
         try
         {
-            spdlog::info("Subscribing " + mPeer);
+            auto nSubscribers = mManager->getNumberOfSubscribers();
+            if (nSubscribers >= mMaximumNumberOfSubscribers)
+            {
+                spdlog::warn("Currently at " 
+                           + std::to_string(nSubscribers)
+                           + ".  Resource exhausted.");
+                grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
+                                    "Max subscribers hit - try again later"};
+                Finish(status);
+            }
+            spdlog::info("Subscribing " + mPeer + " to all streams");
             mManager->subscribeToAll(context);
+            spdlog::info("Subscription manager is now managing "
+                       + std::to_string(mManager->getNumberOfSubscribers())
+                       + " subscribers");
         }
         catch (const std::exception &e) 
         {
@@ -211,6 +226,7 @@ private:
     std::string mPeer;
     std::chrono::milliseconds mTimeOut{20};
     size_t mMaximumQueueSize{2048};
+    int mMaximumNumberOfSubscribers{128};
     bool mWriteInProgress{false};
 };
 
@@ -226,11 +242,13 @@ public:
          std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
              &subscriptionManager,
          std::atomic<bool> *keepRunning,
-         const std::string &accessToken = "") :
+         const std::string &accessToken = "",
+         const int maximumNumberOfSubscribers = 128) :
              mContext(context),
              mSubscriptionRequest(*request),
              mManager(subscriptionManager),
-             mKeepRunning(keepRunning)
+             mKeepRunning(keepRunning),
+             mMaximumNumberOfSubscribers(maximumNumberOfSubscribers)
     {
         // Authenticate
         mPeer = context->peer();
@@ -258,13 +276,35 @@ Client must provide specify at least one stream to which to subscribe.
         // Subscribe
         try
         {
+            auto nSubscribers = mManager->getNumberOfSubscribers();
+            if (nSubscribers >= mMaximumNumberOfSubscribers)
+            { 
+                spdlog::warn("Currently at " 
+                           + std::to_string(nSubscribers)
+                           + ".  Resource exhausted.");
+                grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
+                                    "Max subscribers hit - try again later"};
+                Finish(status);
+            }
             spdlog::info("Subscribing " + mPeer);
-            mManager->subscribe(context, mSubscriptionRequest);
             for (const auto &stream : mSubscriptionRequest.streams())
-            {
+            {   
                 mStreamIdentifiers.insert( 
                     UDataPacketImport::StreamIdentifier {stream});
             }
+            if (mStreamIdentifiers.empty())
+            {
+                grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
+                             "No streams specified - check stream identifiers"};
+                Finish(status);
+            }
+            spdlog::info("Subscribing " + mPeer
+                       + " to " + std::to_string(mStreamIdentifiers.size())
+                       + " streams");
+            mManager->subscribe(context, mSubscriptionRequest);
+            spdlog::info("Subscription manager is now managing "
+                       + std::to_string(mManager->getNumberOfSubscribers())
+                       + " subscribers");
         }
         catch (const std::invalid_argument &e)
         {
@@ -405,6 +445,7 @@ private:
     std::string mPeer;
     std::chrono::milliseconds mTimeOut{20};
     size_t mMaximumQueueSize{2048};
+    int mMaximumNumberOfSubscribers{128};
     bool mWriteInProgress{false};
 };
 

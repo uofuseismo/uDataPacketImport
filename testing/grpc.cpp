@@ -86,7 +86,7 @@ public:
         {
             if (!mKeepRunning){break;}
             std::this_thread::sleep_for(std::chrono::milliseconds {10});
-            std::cout << "Broadcast packet" << std::endl;
+            //std::cout << "Broadcast packet" << std::endl;
             try
             {
                 mManager->addPacket(packet);
@@ -103,145 +103,17 @@ public:
         grpc::CallbackServerContext *context,
         const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override 
     {
-/*
-        class Writer : public grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> 
-        {
-        public:
-            Writer(grpc::CallbackServerContext *context,
-                   const UDataPacketImport::GRPC::SubscriptionRequest *request,
-                   std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager> &subscriptionManager,
-                   std::atomic<bool> *keepRunning) :
-                mContext(context),
-                mManager(subscriptionManager),
-                mKeepRunning(keepRunning)
-            {
-                // Subscribe
-                try
-                {
-                    mManager->subscribeToAll(context);
-                }
-                catch (const std::exception &e) 
-                {
-                    std::cerr << "Failed to subscribe because "
-                              << e.what() << std::endl;
-                    Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Failed to subscribe"));
-                }
-                nextWrite();
-            }
-            void OnWriteDone(bool ok) override 
-            {
-                if (!ok) 
-                {
-                    Finish(grpc::Status(grpc::StatusCode::UNKNOWN, "Unexpected Failure"));
-                }
-                mWriteInProgress = false;
-                mPacketsQueue.pop();
-                nextWrite();
-            }   
-            void OnDone() override 
-            {
-                std::cout << "RPC Completed" << std::endl;
-                if (mContext)
-                {
-                    mManager->unsubscribeFromAllOnCancel(mContext);
-                }
-                delete this;
-            }   
-            void OnCancel() override 
-            { 
-                std::cout << "RPC Cancelled" << std::endl;
-                if (mContext)
-                {
-                    mManager->unsubscribeFromAllOnCancel(mContext);
-                }
-            }
-        private:
-            void nextWrite() 
-            {
-                UDataPacketImport::GRPC::Packet nextPacket;
-                while (mKeepRunning->load() && !mContext->IsCancelled()) //next_feature_ != feature_list_->end()) 
-                {
-                    // Get any remaining packets on the queue on the wire
-                    if (!mPacketsQueue.empty() && !mWriteInProgress)
-                    {
-                        const auto &packet = mPacketsQueue.front();
-                        mWriteInProgress = true;
-                        StartWrite(&packet);
-                        return;
-                    }
-                    // Try to get more packets to write
-                    if (mPacketsQueue.empty())
-                    {
-                        try
-                        {
-                            auto packetsBuffer
-                                = mManager->getNextPacketsFromAllSubscriptions(
-                                     mContext);
-                            for (auto &packet : packetsBuffer)
-                            {
-                                if (mPacketsQueue.size() > mMaximumQueueSize)
-                                {
-                                    mPacketsQueue.pop();
-                                }
-                                mPacketsQueue.push(std::move(packet));
-  std::cout << "got more" << std::endl;
-                            }
-                        }
-                        catch (const std::exception &e)
-                        {
-                            std::cerr << e.what() << std::endl;
-                        }
-                    }
-                    // Take a break
-                    if (mPacketsQueue.empty())
-                    {
-                        std::this_thread::sleep_for(mTimeOut);
-                    }
-                }
-                if (mContext->IsCancelled())
-                {
-                    std::cout << "Terminating acquisition because of client side cancel "
-                              << mContext->peer() << std::endl;
-                }
-                else
-                {
-                    std::cout << "Terminating acquisition because of server side shutdown" << std::endl;
-                }
-                //if (mContext){mManager->unsubscribeFromAll(mContext);}
-                Finish(grpc::Status::OK);
-            }
-            grpc::CallbackServerContext *mContext{nullptr};
-            std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager> mManager{nullptr};
-            std::queue<UDataPacketImport::GRPC::Packet> mPacketsQueue;
-            std::atomic<bool> *mKeepRunning{nullptr};
-            std::chrono::milliseconds mTimeOut{10};
-            size_t mMaximumQueueSize{2048};
-            bool mWriteInProgress{false};
-        };
-*/
         return new ::AsynchronousWriterSubscribeToAll(
-                      context, request, mManager, &mKeepRunning);
+                      context, request, mManager, &mKeepRunning, apiKey, maxSubscribers);
     }
-/*
-    grpc::Status ListFeatures(ServerContext* context,
-                      const routeguide::Rectangle* rectangle,
-                      ServerWriter<Feature>* writer) override {
-    auto lo = rectangle->lo();
-    auto hi = rectangle->hi();
-    long left = (std::min)(lo.longitude(), hi.longitude());
-    long right = (std::max)(lo.longitude(), hi.longitude());
-    long top = (std::max)(lo.latitude(), hi.latitude());
-    long bottom = (std::min)(lo.latitude(), hi.latitude());
-    for (const Feature& f : feature_list_) {
-      if (f.location().longitude() >= left &&
-          f.location().longitude() <= right &&
-          f.location().latitude() >= bottom && f.location().latitude() <= top) {
-        writer->Write(f);
-      }   
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    Subscribe(
+        grpc::CallbackServerContext *context,
+        const UDataPacketImport::GRPC::SubscriptionRequest *request) override 
+    {   
+        return new ::AsynchronousWriterSubscribe(
+                      context, request, mManager, &mKeepRunning, apiKey, maxSubscribers);
     }   
-    return Status::OK;
-  }
-*/
 
     void stop()
     {
@@ -249,6 +121,8 @@ public:
         mManager->unsubscribeAll();
     }
     std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager> mManager{nullptr};
+    std::string apiKey;
+    int maxSubscribers{16};
     std::atomic<bool> mKeepRunning{true};
 };
 
@@ -279,48 +153,67 @@ public:
     std::future<void> mBroadcastFuture;
 };
 
-void subscribe()
+void subscribe(const bool doCancel = false,
+               const bool subscribeToAll = true)
 {
-bool doCancel = true;
-std::cout << "im here" << std::endl;
     grpc::ClientContext context;
     //Status status = stub_->GetFeature(&context, point, feature);
     auto channel
         = grpc::CreateChannel(CLIENT_HOST,
                               grpc::InsecureChannelCredentials());
     auto stub = UDataPacketImport::GRPC::RealTimeBroadcast::NewStub(channel);
-    UDataPacketImport::GRPC::SubscribeToAllStreamsRequest request;
-    std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet> > reader(
-        stub->SubscribeToAllStreams(&context, request));
-std::cout << "sub" << std::endl;
-    UDataPacketImport::GRPC::Packet packet;
-int i =0;
-    while (reader->Read(&packet)) 
+    grpc::Status status;
+    if (subscribeToAll)
     {
-        //std::cout << "look at me right here e yes" << std::endl;
-        std::cout << packet.start_time_mus() << std::endl;
-if (i == 2 && doCancel){break;}
-++i;
-/*
-      std::cout << "Found feature called " << feature.name() << " at "
-                << feature.location().latitude() / kCoordFactor_ << ", "
-                << feature.location().longitude() / kCoordFactor_ << std::endl;
-*/
+        UDataPacketImport::GRPC::SubscribeToAllStreamsRequest request;
+        std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet> >
+            reader( stub->SubscribeToAllStreams(&context, request) );
+        UDataPacketImport::GRPC::Packet packet;
+        int iPacketsRead = 0;
+        while (reader->Read(&packet)) 
+        {
+            //std::cout << "look at me right here e yes" << std::endl;
+            //std::cout << packet.start_time_mus() << std::endl;
+            if (iPacketsRead == 2 && doCancel){break;}
+           ++iPacketsRead;
+        }
+        if (doCancel){context.TryCancel();}
+        status = reader->Finish();
+        if (status.ok()) 
+        {
+            std::cout << "SubscribeToAll rpc succeeded." << std::endl;
+        }
+        else
+        {
+            if (status.error_code() == grpc::StatusCode::CANCELLED)
+            {
+                std::cout << "SubscribeToAll canceled by client" << std::endl;
+            }
+            else 
+            {
+                std::cout << "SubscribeToAll rpc failed." << std::endl;
+            }
+        }
     }   
-if (doCancel){context.TryCancel();}
-//std::cout << "Done" << std::endl;
-    auto status = reader->Finish();
-    if (status.ok()) {
-      std::cout << "SubscribeToAll rpc succeeded." << std::endl;
-    } else {
-      if (status.error_code() == grpc::StatusCode::CANCELLED){
-        std::cout << "SubscribeToAll canceled by client" << std::endl;
-      }
-      else {
-        std::cout << "SubscribeToAll rpc failed." << std::endl;
-      }
-    }   
-
+    else
+    {
+        auto doCWU = true;
+        auto grpcIdentifier = createPacket(0, doCWU).stream_identifier(); // cwu
+        UDataPacketImport::GRPC::SubscriptionRequest request;
+        *request.add_streams() = grpcIdentifier;
+        std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet> >
+            reader( stub->Subscribe(&context, request) );
+        int iPacketsRead{0};
+        UDataPacketImport::GRPC::Packet packet;
+        while (reader->Read(&packet))
+        {
+            //std::cout << "look at me right here e yes" << std::endl;
+            std::cout << "ind sub" << packet.start_time_mus() << std::endl;
+            if (iPacketsRead == 2 && doCancel){break;}
+           ++iPacketsRead;
+        }
+        if (doCancel){context.TryCancel();}
+    } 
 }
 
 /*
@@ -376,7 +269,6 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManagerOptions",
     REQUIRE(options.getStreamOptions().requireOrdered());
 }
 
-/*
 TEST_CASE("UDataPacketImport::GRPC::Stream")
 {
     UDataPacketImport::GRPC::StreamOptions options;
@@ -417,11 +309,9 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
             }
         }
         // Unsubscribe
-        auto response = stream.unsubscribe(subscriberID);
-        REQUIRE(response.packets_read() == 2);
+        stream.unsubscribe(subscriberID);
         REQUIRE(stream.getNumberOfSubscribers() == 1);
-        response = stream.unsubscribe(subscriberID + 1);
-        REQUIRE(response.packets_read() == 2);
+        stream.unsubscribe(subscriberID + 1);
         REQUIRE(stream.getNumberOfSubscribers() == 0);
     }
 
@@ -449,9 +339,9 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
             if (!packetBack){break;}
             packetsBack.push_back(*packetBack);
         }
-        auto response = stream.unsubscribe(subscriberID);
-        REQUIRE(response.packets_read() == 8);
+        stream.unsubscribe(subscriberID);
         // I should have missed the first 2 packets
+        REQUIRE(packetsBack.size() == 8);
         for (int i = 0; i < static_cast<int> (packetsBack.size()); ++i)
         {
             REQUIRE(packetsBack.at(i).start_time_mus()
@@ -505,7 +395,6 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
         REQUIRE(stream.getNextPacket(subscriberID) == std::nullopt);
     }
 }
-*/
 
 TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
           "[publisherTests]")
@@ -522,11 +411,16 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
     auto t1 = std::thread(&::ServerImpl::run, &server);
     std::this_thread::sleep_for(std::chrono::milliseconds {10});
 
-    //auto t2 = std::thread(&::subscribe);
-    auto t2 = std::async(std::launch::async, &::subscribe);
-    auto t3 = std::async(std::launch::async, &::subscribe);
+    auto t2 = std::async(std::launch::async,
+                         &::subscribe, false, true);
+    auto t3 = std::async(std::launch::async,
+                         &::subscribe, true,  true);
+    auto t4 = std::async(std::launch::async,
+                         &::subscribe, false, false);
+    auto t5 = std::async(std::launch::async,
+                         &::subscribe, true,  false);
  
-    std::this_thread::sleep_for(std::chrono::seconds {5});
+    std::this_thread::sleep_for(std::chrono::seconds {4});
     std::cout << "wake up" << std::endl;
     server.stop();
     std::cout << "shut down" << std::endl;
@@ -543,6 +437,22 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
     try
     {
         t3.get();
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << e.what() << std::endl;
+    }
+    try
+    {
+        t4.get();
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << e.what() << std::endl;
+    }
+    try
+    {
+        t5.get();
     }
     catch (const std::exception &e)
     {

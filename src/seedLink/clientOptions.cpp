@@ -111,11 +111,11 @@ void ClientOptions::setStateFile(const std::filesystem::path &stateFile)
 
 std::filesystem::path ClientOptions::getStateFile() const
 {
-    if (!haveStateFile()){throw std::runtime_error("State file not set");}
+    if (!hasStateFile()){throw std::runtime_error("State file not set");}
     return pImpl->mStateFile;
 }
 
-bool ClientOptions::haveStateFile() const noexcept
+bool ClientOptions::hasStateFile() const noexcept
 {
     return !pImpl->mStateFile.empty();
 }
@@ -196,7 +196,7 @@ std::chrono::seconds ClientOptions::getNetworkReconnectDelay() const noexcept
 void ClientOptions::addStreamSelector(
     const StreamSelector &selector)
 {
-    if (!selector.haveNetwork())
+    if (!selector.hasNetwork())
     {
         throw std::invalid_argument("Network not set");
     }

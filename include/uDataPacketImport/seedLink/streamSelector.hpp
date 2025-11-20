@@ -44,7 +44,7 @@ public:
     /// @result The desired network code.
     [[nodiscard]] std::string getNetwork() const;
     /// @result True indicates the network selector was set.
-    [[nodiscard]] bool haveNetwork() const noexcept;
+    [[nodiscard]] bool hasNetwork() const noexcept;
 
     /// @brief Sets the desired station.
     /// @param[in] station  The desired station code - e.g., FORK.

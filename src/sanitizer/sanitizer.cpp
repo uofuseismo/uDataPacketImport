@@ -69,6 +69,7 @@ struct ProgramOptions
     };
     uint16_t grpcPort{50050};
     int verbosity{3};
+    int maximumNumberOfSubscribers{64};
     bool rejectExpiredPackets{true};
     bool rejectFuturePackets{true};
     bool rejectDuplicatePackets{true};
@@ -228,7 +229,8 @@ blind a broadcast if very future data is encountered because of a GPS slip.
                       request,
                       mBroadcastSubscriptionManager,
                       &mKeepRunning,
-                      mOptions.grpcServerToken);
+                      mOptions.grpcServerToken,
+                      mOptions.maximumNumberOfSubscribers);
     }   
 
     grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
@@ -241,7 +243,8 @@ blind a broadcast if very future data is encountered because of a GPS slip.
                       request,
                       mBroadcastSubscriptionManager,
                       &mKeepRunning,
-                      mOptions.grpcServerToken);
+                      mOptions.grpcServerToken,
+                      mOptions.maximumNumberOfSubscribers);
     }
 
 
@@ -724,6 +727,15 @@ Allowed options)""");
         throw std::invalid_argument(
             "Must set server certicate and key to use access token");
     } 
+
+    options.maximumNumberOfSubscribers
+       = propertyTree.get<int> ("grpc.maximumNumberOfSubscribers",
+                                options.maximumNumberOfSubscribers);
+    if (options.maximumNumberOfSubscribers <= 0)
+    {
+        throw std::invalid_argument(
+           "Maximum number of subscribers must be be positive");
+    }
 
     // Read the import configs
     for (int k = 1; k <= std::numeric_limits<int>::max(); ++k)

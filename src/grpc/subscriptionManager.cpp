@@ -222,6 +222,7 @@ public:
         }
         mPendingCallbackServerContextSubscribeToAll.erase(context);
         }
+        mNumberOfSubscribers.fetch_sub(1);
     }
     /// Synchronous unsubscribe from all streams
     void unsubscribeFromAll(grpc::ServerContext *context)
@@ -245,6 +246,7 @@ public:
         }
         mPendingServerContextSubscribeToAll.erase(context);
         }
+        mNumberOfSubscribers.fetch_sub(1);
     }
     /// Asynchronous subscribe to streams
     void subscribe(grpc::CallbackServerContext *context,
@@ -309,11 +311,12 @@ public:
             }
         }
         }
+        mNumberOfSubscribers.fetch_add(1);
     }
     /// Synchronous subscribe to streams
-    void subscribe(grpc::ServerContext *context,
-                   const std::set<UDataPacketImport::StreamIdentifier>
-                       &streamIdentifiers)
+    void subscribe(
+        grpc::ServerContext *context,
+        const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers)
     {
         if (streamIdentifiers.empty()){return;}
         auto contextAddress = reinterpret_cast<uintptr_t> (context);
@@ -372,7 +375,8 @@ public:
                 }
             }
         }
-    } 
+        } 
+        mNumberOfSubscribers.fetch_add(1);
     }
 
     void unsubscribeOnCancel(
@@ -405,6 +409,7 @@ public:
         }
         mPendingCallbackServerContextSubscriptions.erase(context);
         }
+        mNumberOfSubscribers.fetch_sub(1);
     }
 
     /// Asynchronous subscribe to all streams 
@@ -437,6 +442,7 @@ public:
         }
         mPendingCallbackServerContextSubscribeToAll.insert(context);
         }
+        mNumberOfSubscribers.fetch_add(1);
     }
     /// Synchronous subsribe to all streams
     void subscribeToAll(grpc::ServerContext *context)
@@ -467,6 +473,7 @@ public:
         }
         mPendingServerContextSubscribeToAll.insert(context);
         }   
+        mNumberOfSubscribers.fetch_add(1);
     }   
     /// Asynchronous unsubscribe
     void unsubscribe(grpc::CallbackServerContext *context,
@@ -487,6 +494,7 @@ public:
         // Ensure there's nothing pending
         mPendingCallbackServerContextSubscriptions.erase(context); 
         }
+        mNumberOfSubscribers.fetch_sub(1);
     }
     /// Synchronous unsubscribe
     void unsubscribe(grpc::ServerContext *context,
@@ -507,6 +515,7 @@ public:
         // Ensure there's nothing pending
         mPendingServerContextSubscriptions.erase(context); 
         }
+        mNumberOfSubscribers.fetch_sub(1);
     }
     /// Get next packet for a particular context
     [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
@@ -581,8 +590,13 @@ public:
         mPendingCallbackServerContextSubscribeToAll.clear();
         mPendingServerContextSubscribeToAll.clear(); 
         }
+        mNumberOfSubscribers = 0;
     }
 
+    [[nodiscard]] int getNumberOfSubscribers() const noexcept
+    {
+        return mNumberOfSubscribers.load();
+    }
 
     mutable std::mutex mMutex;
     SubscriptionManagerOptions mOptions;
@@ -610,7 +624,7 @@ public:
     <
         grpc::ServerContext *
     > mPendingServerContextSubscribeToAll;
-    std::atomic<bool> mNumberOfSubscribers{0};
+    std::atomic<int> mNumberOfSubscribers{0};
 };
 
 /// Constructor
@@ -802,4 +816,10 @@ std::vector<UDataPacketImport::GRPC::Packet>
 void SubscriptionManager::unsubscribeAll()
 {
     pImpl->unsubscribeAll();
+}
+
+/// Gets the number of subscribers
+int SubscriptionManager::getNumberOfSubscribers() const noexcept
+{
+    return pImpl->getNumberOfSubscribers();    
 }

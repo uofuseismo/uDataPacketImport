@@ -33,6 +33,7 @@ find_package(absl CONFIG REQUIRED)
 find_package(utf8_range CONFIG REQUIRED)
 find_package(protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
+find_package(opentelemetry-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Boost REQUIRED program_options REQUIRED)
 find_package(SEEDLink REQUIRED)
@@ -50,6 +51,7 @@ set(LIBRARY_SRC proto/dataPacketBroadcast.proto
     src/packet.cpp
     src/acquisition.cpp 
     src/grpc/client.cpp
+    src/grpc/clientOptions.cpp
     src/grpc/stream.cpp
     src/grpc/streamOptions.cpp
     src/grpc/subscriptionManager.cpp
@@ -130,6 +132,8 @@ target_link_libraries(uSEEDLinkBroadcast
                               gRPC::grpc++
                               gRPC::grpc++_reflection
                               gRPC::grpcpp_otel_plugin
+                              opentelemetry-cpp::metrics
+                              opentelemetry-cpp::prometheus_exporter
                               uDataPacketImport spdlog::spdlog_header_only
                               readerwriterqueue
                               Boost::boost Boost::program_options Threads::Threads)
@@ -149,6 +153,8 @@ target_link_libraries(uPacketSanitizer
                               gRPC::grpc++
                               gRPC::grpc++_reflection
                               gRPC::grpcpp_otel_plugin
+                              opentelemetry-cpp::metrics
+                              opentelemetry-cpp::prometheus_exporter
                               uDataPacketImport spdlog::spdlog_header_only
                               Boost::boost Boost::program_options Threads::Threads)
 
@@ -188,6 +194,7 @@ set_target_properties(unitTests PROPERTIES
 target_link_libraries(unitTests uDataPacketImport
                       gRPC::grpc
                       gRPC::grpc++
+                      gRPC::grpcpp_otel_plugin
                       Threads::Threads
                       Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests

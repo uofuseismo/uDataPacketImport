@@ -376,7 +376,7 @@ public:
         }
         // Set the record size and state file
         mSEEDRecordSize = options.getSEEDRecordSize();
-        if (options.haveStateFile())
+        if (options.hasStateFile())
         {
             mStateFile = options.getStateFile();
             mStateFileUpdateInterval = options.getStateFileUpdateInterval();

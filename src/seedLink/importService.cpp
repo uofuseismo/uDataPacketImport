@@ -76,7 +76,6 @@ struct ProgramOptions
     std::string grpcServerKey; // e.g., localhost.key
     std::string grpcServerCertificate; // e.g., localhost.crt
     size_t importQueueSize{DEFAULT_IMPORT_QUEUE_SIZE};
-
 /*
     std::string openTelemetrySchema{OTEL_SCHEMA};
     std::string openTelemetryVersion{OTEL_VERSION};
@@ -92,6 +91,7 @@ struct ProgramOptions
     size_t maxPublisherQueueSize{MAX_QUEUE_SIZE};
 */
     uint16_t grpcPort{50000};
+    int maximumNumberOfSubscribers{128};
     int verbosity{3};
     bool grpcEnableReflection{false};
     //bool preventFuturePackets{true};
@@ -376,7 +376,8 @@ public:
                       request,
                       mSubscriptionManager,
                       &mKeepRunning,
-                      mOptions.grpcServerToken);
+                      mOptions.grpcServerToken,
+                      mOptions.maximumNumberOfSubscribers);
     }
 
 /*
@@ -902,6 +903,15 @@ getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
         throw std::invalid_argument(
             "Must set server certicate and key to use access token");
     }
+
+    options.maximumNumberOfSubscribers
+       = propertyTree.get<int> ("grpc.maximumNumberOfSubscribers",
+                                options.maximumNumberOfSubscribers);
+    if (options.maximumNumberOfSubscribers <= 0)
+    {   
+        throw std::invalid_argument(
+           "Maximum number of subscribers must be be positive");
+    }   
 
     // SEEDLink properties
     if (propertyTree.get_optional<std::string> ("SEEDLink.address"))

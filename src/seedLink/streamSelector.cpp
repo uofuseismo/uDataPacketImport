@@ -76,11 +76,11 @@ void StreamSelector::setNetwork(const std::string &network)
 
 std::string StreamSelector::getNetwork() const
 {
-    if (!haveNetwork()){throw std::runtime_error("Network not set");}
+    if (!hasNetwork()){throw std::runtime_error("Network not set");}
     return pImpl->mNetwork;
 }
 
-bool StreamSelector::haveNetwork() const noexcept
+bool StreamSelector::hasNetwork() const noexcept
 {
     return !pImpl->mNetwork.empty();
 }
