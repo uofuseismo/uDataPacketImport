@@ -43,12 +43,11 @@ public:
                    const SubscriptionRequest &request);
 
     /// @brief Allows a client to unsubscribe from all streams. 
-    [[deprecated]] [[nodiscard]] UnsubscribeFromAllStreamsResponse
-        unsubscribeFromAll(grpc::ServerContext *context);
-    [[deprecated]] [[nodiscard]] UnsubscribeFromAllStreamsResponse
-        unsubscribeFromAll(grpc::CallbackServerContext *context);
+    void unsubscribeFromAll(grpc::ServerContext *context);
+    void unsubscribeFromAll(grpc::CallbackServerContext *context);
 
     /// @brief Allows a client to unsubscribe from all streams.
+/*
     void unsubscribeFromAllOnCancel(grpc::ServerContext *context);
     void unsubscribeFromAllOnCancel(grpc::CallbackServerContext *context);
 
@@ -58,17 +57,15 @@ public:
     void unsubscribeOnCancel(grpc::CallbackServerContext *context,
                              const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
 
+*/
 
     /// @brief Allows a client to unsubscribe from streams. 
-    [[deprecated]] [[nodiscard]] UnsubscribeResponse
-        unsubscribe(uintptr_t contextAddress,
-                    const SubscriptionRequest &initialRequest);
-    [[deprecated]] [[nodiscard]] UnsubscribeResponse
-        unsubscribe(grpc::ServerContext *context,
-                    const SubscriptionRequest &initialRequest);
-    [[deprecated]] [[nodiscard]] UnsubscribeResponse
-        unsubscribe(grpc::CallbackServerContext *context,
-                    const SubscriptionRequest &initialRequest);
+    //void unsubscribe(uintptr_t contextAddress,
+    //                 const SubscriptionRequest &initialRequest);
+    void unsubscribe(grpc::ServerContext *context,
+                     const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
+    void unsubscribe(grpc::CallbackServerContext *context,
+                     const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
 
     /// TODO Need to manage subscriptions better 
     [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
@@ -96,6 +93,7 @@ public:
     /// @result The number of subscribers.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept;
 
+    /// @brief Allows the server to purge all subscribers.
     void unsubscribeAll();
 
     /// @brief Destructor.

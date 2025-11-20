@@ -55,10 +55,12 @@ public:
         }
         //return true;      
     }
+    /*
     [[nodiscard]] uint64_t getNumberOfPacketsRead() const noexcept
     {
         return mPacketsRead.load();
     }
+    */
     [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet> popFront()
     {
         std::optional<UDataPacketImport::GRPC::Packet> result{std::nullopt};
@@ -75,7 +77,7 @@ public:
               );
         mQueue.pop();
         }
-        mPacketsRead.fetch_add(1);
+        //mPacketsRead.fetch_add(1);
         return result;
     }
     mutable std::mutex mMutex;
@@ -85,7 +87,7 @@ public:
         std::numeric_limits<int64_t>::lowest()
     };
     size_t mQueueSize{8};
-    std::atomic<uint64_t> mPacketsRead{0};
+    //std::atomic<uint64_t> mPacketsRead{0};
     bool mRequiredOrdered{true};
 };
        
@@ -205,19 +207,14 @@ public:
                                + mIdentifierString);
     }
     // Unsubscribe one particular customer
-    [[nodiscard]] UnsubscribeResponse unsubscribe(const uintptr_t contextAddress) //grpc::CallbackServerContext *context)
+    void unsubscribe(const uintptr_t contextAddress)
     {
-        UnsubscribeResponse response;
-        *response.mutable_stream_identifier() = mIdentifier;
-        response.set_packets_read(0);
-        //if (context == nullptr){throw std::invalid_argument("Context is null");}
         bool wasUnsubscribed{false};
         {
         std::lock_guard<std::mutex> lock(mMutex);
         auto index = mSubscribers.find(contextAddress);
         if (index != mSubscribers.end())
         {
-            response.set_packets_read(index->second->getNumberOfPacketsRead());
             mSubscribers.erase(index);
             wasUnsubscribed = true;
         }
@@ -238,7 +235,6 @@ public:
                         + " never subscribed to "
                         + mIdentifierString);
         }
-        return response;
     }
     // Unsubscribe everyone
     void unsubscribeAll()
@@ -371,9 +367,9 @@ std::optional<UDataPacketImport::GRPC::Packet>
     return pImpl->getNextPacket(contextAddress);
 }
 
-UnsubscribeResponse Stream::unsubscribe(const uintptr_t contextAddress)
+void Stream::unsubscribe(const uintptr_t contextAddress)
 {
-    return pImpl->unsubscribe(contextAddress);
+    pImpl->unsubscribe(contextAddress);
 }
 
 /*

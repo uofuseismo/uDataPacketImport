@@ -114,7 +114,7 @@ Client must provide access token in x-custom-auth-token header field
          spdlog::info("Subscribe to all RPC completed for " + mPeer);
          if (mContext)
          {
-             mManager->unsubscribeFromAllOnCancel(mContext);
+             mManager->unsubscribeFromAll(mContext);
          }
          delete this;
      }   
@@ -124,7 +124,7 @@ Client must provide access token in x-custom-auth-token header field
          spdlog::info("Subscribe to all RPC cancelled for " + mPeer);
          if (mContext)
          {
-             mManager->unsubscribeFromAllOnCancel(mContext);
+             mManager->unsubscribeFromAll(mContext);
          }
      }
 
@@ -183,7 +183,7 @@ private:
             // The context is still valid so try to remove it from the
             // subscriptoins.  This can be the case whether the server is
             // shutting down or the client bailed.
-            mManager->unsubscribeFromAllOnCancel(mContext);
+            mManager->unsubscribeFromAll(mContext);
             if (mContext->IsCancelled())
             {
                 spdlog::info("Terminating acquisition for " 
@@ -310,7 +310,7 @@ Client must provide specify at least one stream to which to subscribe.
          spdlog::debug("Subscribe RPC completed for " + mPeer);
          if (mContext)
          {
-             mManager->unsubscribeOnCancel(mContext, mStreamIdentifiers);
+             mManager->unsubscribe(mContext, mStreamIdentifiers);
          }
          delete this;
      }   
@@ -320,7 +320,7 @@ Client must provide specify at least one stream to which to subscribe.
          spdlog::debug("Subscribe RPC cancelled for " + mPeer);
          if (mContext)
          {
-             mManager->unsubscribeOnCancel(mContext, mStreamIdentifiers);
+             mManager->unsubscribe(mContext, mStreamIdentifiers);
          }
      }
 
@@ -376,7 +376,7 @@ private:
             // The context is still valid so try to remove from the
             // subscriptions.  This can be the case whether the server is
             // shutting down or the client bailed.
-            mManager->unsubscribeOnCancel(mContext, mStreamIdentifiers);
+            mManager->unsubscribe(mContext, mStreamIdentifiers);
             if (mContext->IsCancelled())
             {
                 spdlog::debug("Terminating acquisition for " 

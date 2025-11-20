@@ -9,7 +9,6 @@ namespace UDataPacketImport::GRPC
 {
  class Packet;
  class StreamOptions;
- class UnsubscribeResponse;
 }
 namespace UDataPacketImport::GRPC
 {
@@ -44,9 +43,6 @@ public:
     /// @result Gets the current number of subscribers.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept;
 
-    //[[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
-    //   getNextPacket(grpc::CallbackServerContext *context) const noexcept;
-
     /// @brief Subscribes to a stream.
     /// @param[in] contextAddress  The memory address of the grpc context.
     /// @note The context address can be created using something like: 
@@ -55,16 +51,14 @@ public:
     void subscribe(uintptr_t contextAddress);
     /// @result True indicates the context is subscribed.
     [[nodiscard]] bool isSubscribed(uintptr_t contextAddress) const noexcept;
-    /// @brief Subscribes to the stream.
-    //void subscribe(grpc::CallbackServerContext *context);    
 
     /// @brief Unsubscribes from the stream.
     /// @param[in] contextAddress  The memory address of the grpc context.
-    [[nodiscard]] UnsubscribeResponse unsubscribe(uintptr_t contextAddress);
-    /// @brief Unsubscribes from the stream.
-    //[[nodiscard]] UnsubscribeResponse unsubscribe(grpc::CallbackServerContext *context);
+    void unsubscribe(uintptr_t contextAddress);
 
-    /// @brief Unsubscribes all from the stream.
+    /// @brief Unsubscribes all subscribes from the stream.
+    /// @note This is useful for when the server running the subscription
+    ///       manager wants to shut down and purge all clients.
     void unsubscribeAll();
 
     /// @brief Destructor.
