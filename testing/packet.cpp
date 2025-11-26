@@ -1,4 +1,6 @@
 #include <vector>
+#include <set>
+#include <map>
 #include <cmath>
 #include <string>
 #include <chrono>
@@ -54,6 +56,35 @@ TEST_CASE("UDataPacketImport::StreamIdentifier", "[streamIdentifier]")
         REQUIRE(proto.station() == station);
         REQUIRE(proto.channel() == channel);
         REQUIRE(proto.location_code() == locationCode);
+    }
+
+    SECTION("Set")
+    {
+        UDataPacketImport::StreamIdentifier id1;
+        id1.setNetwork("UU"); id1.setStation("CWU");
+        id1.setChannel("HHZ"); id1.setLocationCode("01");
+
+        UDataPacketImport::StreamIdentifier id2;
+        id2.setNetwork("UU"); id2.setStation("CWU"); 
+        id2.setChannel("HHN"); id2.setLocationCode("01");
+
+        UDataPacketImport::StreamIdentifier id3;
+        id3.setNetwork("UU"); id3.setStation("CWU"); 
+        id3.setChannel("HHE"); id3.setLocationCode("01");
+
+        UDataPacketImport::StreamIdentifier id4;
+        id4.setNetwork("UU"); id4.setStation("TMU"); 
+        id4.setChannel("HHZ"); id4.setLocationCode("01");
+
+        std::set<UDataPacketImport::StreamIdentifier> ids;
+        ids.insert(id1);
+        ids.insert(id2);
+        ids.insert(id3);
+        REQUIRE(ids.size() == 3);
+        REQUIRE(ids.contains(id1));
+        REQUIRE(ids.contains(id2));
+        REQUIRE(ids.contains(id3));
+        REQUIRE(!ids.contains(id4)); 
     }
       
 }

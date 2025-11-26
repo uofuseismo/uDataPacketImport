@@ -263,12 +263,12 @@ UDataPacketImport::GRPC::StreamIdentifier StreamIdentifier::toProtobuf() const
 bool UDataPacketImport::operator<(const StreamIdentifier &lhs,
                                   const StreamIdentifier &rhs)
 {
-    return lhs.toStringView() < rhs.toStringView();
+    return lhs.getStringReference() < rhs.getStringReference();
 }
 
 bool UDataPacketImport::operator==(const StreamIdentifier &lhs,
                                    const StreamIdentifier &rhs)
 {
-    return lhs.toStringView() == rhs.toStringView();
+    return lhs.getStringReference() == rhs.getStringReference();
 }
 

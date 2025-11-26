@@ -79,12 +79,14 @@ public:
     /// @throws std::runtime_error if the network, station, channel, or location
     ///         code is not set.
     [[nodiscard]] std::string toString() const;
+    /// @result A reference to the underlying string.  This exists for
+    ///         performance sensitive applications.
     [[nodiscard]] const std::string &getStringReference() const;
     /// @result A string view representation of the identifier encoded as
     /// @throws std::runtime_error if the network, station, channel, or location
     ///         code is not set.
     /// @note You should prefer \c toString() as it is safer.
-    [[nodiscard]] const std::string_view toStringView() const;
+    [[deprecated]] [[nodiscard]] const std::string_view toStringView() const;
 
     /// @result Converts the class to a protobuf.
     [[nodiscard]] UDataPacketImport::GRPC::StreamIdentifier toProtobuf() const;
@@ -112,7 +114,7 @@ private:
     class StreamIdentifierImpl;
     std::unique_ptr<StreamIdentifierImpl> pImpl;
 };
-bool operator<(const StreamIdentifier &, const StreamIdentifier &rhs);
-bool operator==(const StreamIdentifier &, const StreamIdentifier &rhs);
+bool operator<(const StreamIdentifier &, const StreamIdentifier &);
+bool operator==(const StreamIdentifier &, const StreamIdentifier &);
 }
 #endif

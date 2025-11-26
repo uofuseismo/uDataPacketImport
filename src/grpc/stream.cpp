@@ -104,7 +104,7 @@ public:
         UDataPacketImport::StreamIdentifier
             identifier{packet.stream_identifier()};
 #ifndef NDEBUG
-        assert(!identifier.toStringView().empty());
+        assert(!identifier.getStringReference().empty());
 #endif
         mIdentifier = identifier.toProtobuf();
         mIdentifierString = identifier.toString();
@@ -130,7 +130,7 @@ public:
     {
         UDataPacketImport::StreamIdentifier
             identifier{packetIn.stream_identifier()};
-        if (identifier.toStringView() != mIdentifierStringView)
+        if (identifier.getStringReference() != mIdentifierStringView)
         {
             spdlog::error("Cannot add " + identifier.toString()
                          + " to stream " + mIdentifierString);
@@ -281,6 +281,16 @@ public:
         std::lock_guard<std::mutex> lock(mMutex);
         return static_cast<int> (mSubscribers.size());
     }
+    [[nodiscard]] std::set<uintptr_t> getSubscribers() const noexcept
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        std::set<uintptr_t> result;
+        for (const auto &subscriber : mSubscribers)
+        {
+            result.insert(subscriber.first);
+        }
+        return result;
+    }
     [[nodiscard]]
     bool isSubscribed(const uintptr_t contextAddress) const noexcept
     {
@@ -388,6 +398,11 @@ UnsubscribeResponse Stream::unsubscribe(grpc::CallbackServerContext *context)
 int Stream::getNumberOfSubscribers() const noexcept
 {
     return pImpl->getNumberOfSubscribers();
+}
+
+std::set<uintptr_t> Stream::getSubscribers() const noexcept
+{
+    return pImpl->getSubscribers();
 }
 
 /// Subscribed?

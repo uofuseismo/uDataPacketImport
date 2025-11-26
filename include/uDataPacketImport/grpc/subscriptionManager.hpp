@@ -33,17 +33,17 @@ public:
     /// @{
 
     /// @brief Allows a client to subscribe to all streams.
-    void subscribeToAll(grpc::ServerContext *context);
+    //void subscribeToAll(grpc::ServerContext *context);
     void subscribeToAll(grpc::CallbackServerContext *context);
 
     /// @brief Allows a client to subsribe to a list of streams.
-    void subscribe(grpc::ServerContext *context,
-                   const SubscriptionRequest &request);
+    //void subscribe(grpc::ServerContext *context,
+    //               const SubscriptionRequest &request);
     void subscribe(grpc::CallbackServerContext *context,
                    const SubscriptionRequest &request);
 
     /// @brief Allows a client to unsubscribe from all streams. 
-    void unsubscribeFromAll(grpc::ServerContext *context);
+    //void unsubscribeFromAll(grpc::ServerContext *context);
     void unsubscribeFromAll(grpc::CallbackServerContext *context);
 
     /// @brief Allows a client to unsubscribe from all streams.
@@ -62,8 +62,8 @@ public:
     /// @brief Allows a client to unsubscribe from streams. 
     //void unsubscribe(uintptr_t contextAddress,
     //                 const SubscriptionRequest &initialRequest);
-    void unsubscribe(grpc::ServerContext *context,
-                     const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
+    //void unsubscribe(grpc::ServerContext *context,
+    //                 const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
     void unsubscribe(grpc::CallbackServerContext *context,
                      const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
 
@@ -74,8 +74,8 @@ public:
 
     [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
         getNextPacketsFromAllSubscriptions(grpc::CallbackServerContext *context) const;
-    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
-        getNextPacketsFromAllSubscriptions(grpc::ServerContext *context) const;
+    //[[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+    //    getNextPacketsFromAllSubscriptions(grpc::ServerContext *context) const;
     /// @}
 
     /// @name Producer Interface

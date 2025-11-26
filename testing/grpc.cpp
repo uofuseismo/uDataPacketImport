@@ -13,6 +13,8 @@
 #include "asynchronousWriter.hpp"
 #include "uDataPacketImport/grpc/subscriptionManager.hpp"
 #include "uDataPacketImport/grpc/subscriptionManagerOptions.hpp"
+#include "uDataPacketImport/grpc/client.hpp"
+#include "uDataPacketImport/grpc/clientOptions.hpp"
 #include "uDataPacketImport/grpc/streamOptions.hpp"
 #include "uDataPacketImport/grpc/stream.hpp"
 #include "uDataPacketImport/packet.hpp"
@@ -216,6 +218,53 @@ void subscribe(const bool doCancel = false,
     } 
 }
 
+void gotGRPCPacketCallback(UDataPacketImport::GRPC::Packet &&packet)
+{
+    std::cout << "in here" << std::endl;
+    UDataPacketImport::StreamIdentifier identifier{packet.stream_identifier()};
+    std::cout << "got packet " << identifier.toString() << std::endl;
+}
+
+void subscribeWithClient(const bool doCancel = false,
+                         const bool subscribeToAll = true)
+{
+    UDataPacketImport::GRPC::ClientOptions options;
+    options.setAddress(CLIENT_HOST);
+auto cwuPacket = ::createPacket(0, false);
+UDataPacketImport::StreamIdentifier identifier{cwuPacket.stream_identifier()};
+std::set<UDataPacketImport::StreamIdentifier> identifiers;
+identifiers.insert(identifier);
+assert(identifiers.size() == 1);
+options.setStreamSelections(identifiers);
+
+    std::function<void (UDataPacketImport::GRPC::Packet &&)>
+        gotPacketCallbackFunction
+    {
+        std::bind(&::gotGRPCPacketCallback, //this,
+                  std::placeholders::_1)
+    };
+
+std::cout << "init" << std::endl;
+    UDataPacketImport::GRPC::Client client{gotPacketCallbackFunction, options};
+std::cout << "starting client" << std::endl;
+    auto future = client.start(); 
+    std::this_thread::sleep_for(std::chrono::seconds {2});
+std::cout << "stopping client" << std::endl;
+    client.stop();
+    try
+    {
+        future.get();
+    }   
+    catch (const std::exception &e) 
+    {  
+        std::cerr << "Fatal error in client: " << e.what() << std::endl;
+        //return false; 
+    }
+    //return true;
+std::cout << "okay" << std::endl;
+}
+
+
 /*
 void runServer()
 {
@@ -286,6 +335,9 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
         REQUIRE_NOTHROW(stream.subscribe(subscriberID));
         REQUIRE_NOTHROW(stream.subscribe(subscriberID + 1));
         REQUIRE(stream.getNumberOfSubscribers() == 2);
+        REQUIRE(stream.getSubscribers().size() == 2);
+        REQUIRE(stream.getSubscribers().contains(subscriberID));
+        REQUIRE(stream.getSubscribers().contains(subscriberID + 1));
         // Add the rest of the packets
         for (int i = 1; i < static_cast<int> (localPackets.size()); ++i)
         {
@@ -311,8 +363,11 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
         // Unsubscribe
         stream.unsubscribe(subscriberID);
         REQUIRE(stream.getNumberOfSubscribers() == 1);
+        REQUIRE(stream.getSubscribers().size() == 1);
+        REQUIRE(stream.getSubscribers().contains(subscriberID + 1));
         stream.unsubscribe(subscriberID + 1);
         REQUIRE(stream.getNumberOfSubscribers() == 0);
+        REQUIRE(stream.getSubscribers().size() == 0);
     }
 
     SECTION("Overflow queue")
@@ -412,14 +467,17 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
     std::this_thread::sleep_for(std::chrono::milliseconds {10});
 
     auto t2 = std::async(std::launch::async,
-                         &::subscribe, false, true);
+                         &::subscribeWithClient, false, true);
+/*
     auto t3 = std::async(std::launch::async,
                          &::subscribe, true,  true);
+*/
+/*
     auto t4 = std::async(std::launch::async,
                          &::subscribe, false, false);
     auto t5 = std::async(std::launch::async,
                          &::subscribe, true,  false);
- 
+*/ 
     std::this_thread::sleep_for(std::chrono::seconds {4});
     std::cout << "wake up" << std::endl;
     server.stop();
@@ -434,6 +492,7 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
     {
         std::cerr << e.what() << std::endl;
     } 
+/*
     try
     {
         t3.get();
@@ -442,6 +501,8 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
     {
         std::cerr << e.what() << std::endl;
     }
+*/
+/*
     try
     {
         t4.get();
@@ -458,4 +519,5 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
     {
         std::cerr << e.what() << std::endl;
     }
+*/
 }

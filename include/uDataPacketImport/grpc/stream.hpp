@@ -5,6 +5,7 @@
 #include <string_view>
 #include <optional>
 #include <memory>
+#include <set>
 namespace UDataPacketImport::GRPC
 {
  class Packet;
@@ -42,6 +43,8 @@ public:
          getNextPacket(uintptr_t contextAddress) const noexcept;
     /// @result Gets the current number of subscribers.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept;
+    /// @result The current subscribers.
+    [[nodiscard]] std::set<uintptr_t> getSubscribers() const noexcept;
 
     /// @brief Subscribes to a stream.
     /// @param[in] contextAddress  The memory address of the grpc context.

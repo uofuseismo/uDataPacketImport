@@ -13,11 +13,22 @@ namespace UDataPacketImport::GRPC
 class Client : public UDataPacketImport::IAcquisition
 {
 public:
-    /// @brief Defines the SEEDLink packet reader client.
+    /// @brief Defines the gRPC packet reader client.
     /// @param[in] callback  The mechanism by which packets are propagated from
-    ///                      SEEDLink to this application.
-    /// @param[in] options   The SEEDLink client options.
+    ///                      gRPC to this application.  This callback uses the
+    ///                      low-level protobuf which is slightly faster but
+    ///                      more inconvenient for use in an applicaiton.
+    /// @param[in] options   The client options.
     Client(const std::function<void (UDataPacketImport::GRPC::Packet &&packet)> &callback,
+           const ClientOptions &options);
+    /// @brief Defines the gRPC packet reader client.
+    /// @param[in] callback  The mechanism by which packets are propagated from
+    ///                      gRPC to this application.  This callback uses the
+    ///                      library packet specification which is slightly
+    ///                      slower but more convenient for use in an
+    ///                      application.
+    /// @param[in] options   The client options.
+    Client(const std::function<void (UDataPacketImport::Packet &&packet)> &callback,
            const ClientOptions &options);
     /// @brief Starts the import thread.
     /// @result A future so as to catch exceptions.
@@ -26,9 +37,9 @@ public:
     void stop() final;
     /// @result True indicates the class is initialized and ready to start.
     [[nodiscard]] bool isInitialized() const noexcept final;
-    /// @result True indicates the SEEDLink client is acquiring data.
+    /// @result True indicates the client is acquiring data.
     [[nodiscard]] bool isRunning() const noexcept final;
-    /// @result Indicates that this is a SEEDLink client.
+    /// @result Indicates that this is a client.
     [[nodiscard]] std::string getType() const noexcept final;
     /// @brief Destructor.
     ~Client() override;

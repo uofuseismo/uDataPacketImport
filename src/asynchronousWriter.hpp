@@ -137,10 +137,12 @@ Client must provide access token in x-custom-auth-token header field
      void OnCancel() override 
      { 
          spdlog::info("Subscribe to all RPC cancelled for " + mPeer);
+         /*
          if (mContext)
          {
              mManager->unsubscribeFromAll(mContext);
          }
+         */
      }
 
 private:
@@ -286,11 +288,20 @@ Client must provide specify at least one stream to which to subscribe.
                                     "Max subscribers hit - try again later"};
                 Finish(status);
             }
-            spdlog::info("Subscribing " + mPeer);
+            //spdlog::debug("Subscribing " + mPeer);
+            if (mSubscriptionRequest.streams_size() == 0)
+            {
+                grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
+                             "No streams specified - check stream identifiers"};
+                Finish(status);
+            }
+            mStreamIdentifiers.clear();
             for (const auto &stream : mSubscriptionRequest.streams())
             {   
-                mStreamIdentifiers.insert( 
-                    UDataPacketImport::StreamIdentifier {stream});
+                UDataPacketImport::StreamIdentifier streamIdentifier{stream};
+                mStreamIdentifiers.insert(streamIdentifier);
+                spdlog::debug("Client wants to subscribe to "
+                            + streamIdentifier.toString());
             }
             if (mStreamIdentifiers.empty())
             {
@@ -358,10 +369,12 @@ Client must provide specify at least one stream to which to subscribe.
      void OnCancel() override 
      { 
          spdlog::debug("Subscribe RPC cancelled for " + mPeer);
+         /*
          if (mContext)
          {
              mManager->unsubscribe(mContext, mStreamIdentifiers);
          }
+         */
      }
 
 private:

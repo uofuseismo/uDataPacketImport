@@ -204,6 +204,13 @@ blind a broadcast if very future data is encountered because of a GPS slip.
         }
         if (allow)
         {
+/*
+UDataPacketImport::StreamIdentifier id{packet.stream_identifier()};
+if (id.toString() == "WY.YNM.HHZ.01")
+{
+ std::cout << std::setprecision(16) << packet.start_time_mus()*1.e-6 << std::endl;
+}
+*/
             mBroadcastSubscriptionManager->addPacket(std::move(packet)); 
         }
     }
@@ -223,7 +230,7 @@ blind a broadcast if very future data is encountered because of a GPS slip.
     Subscribe(
         grpc::CallbackServerContext *context,
         const UDataPacketImport::GRPC::SubscriptionRequest *request) override
-    {   
+    {
         return new ::AsynchronousWriterSubscribe(
                       context,
                       request,
