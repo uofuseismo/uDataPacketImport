@@ -9,6 +9,20 @@
 #include <grpcpp/health_check_service_interface.h>
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/ext/otel_plugin.h>
+#include <opentelemetry/nostd/shared_ptr.h>
+#include <opentelemetry/metrics/meter.h>
+#include <opentelemetry/metrics/meter_provider.h>
+#include <opentelemetry/metrics/provider.h>
+#include <opentelemetry/exporters/ostream/metric_exporter_factory.h>
+#include <opentelemetry/exporters/prometheus/exporter_factory.h>
+#include <opentelemetry/exporters/prometheus/exporter_options.h>
+#include <opentelemetry/sdk/metrics/meter_context.h>
+#include <opentelemetry/sdk/metrics/meter_context_factory.h>
+#include <opentelemetry/sdk/metrics/meter_provider.h>
+#include <opentelemetry/sdk/metrics/meter_provider_factory.h>
+#include <opentelemetry/sdk/metrics/provider.h>
+#include <opentelemetry/sdk/metrics/view/instrument_selector_factory.h>
+#include <opentelemetry/sdk/metrics/view/meter_selector_factory.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -57,6 +71,7 @@ struct ProgramOptions
     UDataPacketImport::GRPC::SubscriptionManagerOptions
         subscriptionManagerOptions;
     std::string applicationName{APPLICATION_NAME};
+    std::string prometheusURL{"localhost:9090"};
     std::string grpcHost{"localhost"};
     std::string grpcServerCertificate;
     std::string grpcServerKey;
@@ -79,6 +94,37 @@ struct ProgramOptions
 void setVerbosityForSPDLOG(const int verbosity);
 std::pair<std::string, bool> parseCommandLineOptions(int argc, char *argv[]);
 ::ProgramOptions parseIniFile(const std::filesystem::path &iniFile);
+
+void initializeMetrics(const ProgramOptions &options)
+{
+    opentelemetry::exporter::metrics::PrometheusExporterOptions
+        prometheusOptions;
+    prometheusOptions.url = options.prometheusURL;
+    auto prometheusExporter
+        = opentelemetry::exporter::metrics::PrometheusExporterFactory::Create(
+              prometheusOptions);
+
+    // Initialize and set the global MeterProvider
+    auto providerInstance 
+        = opentelemetry::sdk::metrics::MeterProviderFactory::Create();
+    auto *meterProvider
+        = static_cast<opentelemetry::sdk::metrics::MeterProvider *>
+          (providerInstance.get());
+    meterProvider->AddMetricReader(std::move(prometheusExporter));
+
+    //constexpr std::string_view otelVersion{"1.2.0"};
+    //constexpr std::string_view otelSchema{"https://opentelemetry.io/schemas/1.2.0"};
+ 
+    std::shared_ptr<opentelemetry::metrics::MeterProvider>
+        provider(std::move(providerInstance));
+    opentelemetry::sdk::metrics::Provider::SetMeterProvider(provider);
+}
+
+void cleanupMetrics()
+{
+     std::shared_ptr<opentelemetry::metrics::MeterProvider> none;
+     opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
+}
 
 }
 

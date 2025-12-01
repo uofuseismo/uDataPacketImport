@@ -126,7 +126,11 @@ Client must provide access token in x-custom-auth-token header field
      // subscription manager..
      void OnDone() override 
      {
-         spdlog::info("Subscribe to all RPC completed for " + mPeer);
+         spdlog::debug("Subscribe to all RPC completed for " + mPeer);
+         spdlog::info("Subscribe to all RPC completed for " + mPeer
+                    + ".  Subscription manager is now managing "
+                    + std::to_string(mManager->getNumberOfSubscribers())
+                    + " subscribers");
          if (mContext)
          {
              mManager->unsubscribeFromAll(mContext);
@@ -359,6 +363,10 @@ Client must provide specify at least one stream to which to subscribe.
      void OnDone() override 
      {
          spdlog::debug("Subscribe RPC completed for " + mPeer);
+         spdlog::info("Subscription RPC completed for " + mPeer
+                    + ".  Subscription manager is now managing "
+                    + std::to_string(mManager->getNumberOfSubscribers())
+                    + " subscribers");
          if (mContext)
          {
              mManager->unsubscribe(mContext, mStreamIdentifiers);
