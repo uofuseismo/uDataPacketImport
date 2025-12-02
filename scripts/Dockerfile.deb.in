@@ -2,7 +2,7 @@
 # Usage: podman build -t udatapacketimport:latest -f Dockerfile.deb
 #        buildah bud -t udatapacketimport:latest -f Dockerfile.deb
 FROM ubuntu:24.04
-ADD uMetadata-@PROJECT_VERSION@-Linux.deb .
+ADD uDataPacketImport-@PROJECT_VERSION@-Linux.deb .
 RUN apt-get update &&\
     apt-get upgrade -y &&\
     apt-get autoremove -y &&\
