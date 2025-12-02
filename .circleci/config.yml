@@ -1,0 +1,100 @@
+version: 2.1 
+jobs:
+  compile-job:
+    # Specify the execution environment. You can specify an image from Docker Hub or use one of our convenience images from CircleCI's Developer Hub.    # See: https://circleci.com/docs/executor-intro/ & https://circleci.com/docs/configuration-reference/#executor-job
+    docker:
+      # Specify the version you desire here
+      # See: https://circleci.com/developer/images/image/cimg/base
+      - image: quay.io/uuss/us8base
+    resource_class: small
+    steps:
+      - checkout:
+          method: blobless
+      - run:
+          name: "Configure cmake"
+          command: |
+            if [ -d build ]; then
+               rm -rf build
+            fi
+            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/usr/local/grpc/lib/cmake/absl:/usr/local/grpc/lib/cmake/protobuf:/usr/local/grpc/lib/cmake/utf8_range
+            cmake -B build \
+                  -DCMAKE_CXX_COMPILER=clang++ \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DBUILD_SHARED_LIBS=OFF \
+                  -DBUILD_FOR_DEBIAN=ON \
+                  -DCMAKE_INSTALL_PREFIX=/usr/local/ \
+                  -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+      - run:
+          name: "Build the code"
+          command: |
+            cd build
+            # resource class small has 1 vcpu and medium has 2
+            make -j 1
+      - run:
+          name: "Install the code"
+          command: |
+            cd build
+            make install
+      - run:
+          name: "Test the code"
+          command: |
+            cd build
+            export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/lib
+            ctest --verbose
+      - run:
+          name: "Package code"
+          command: |
+            cd build
+            mkdir -p /tmp/artifacts
+            mkdir -p /tmp/workspace
+            cpack -B /tmp/artifacts
+            rm -rf /tmp/artifacts/_CPack_Packages
+            make uDataPacketImport-deb
+            mv *-Linux.deb /tmp/workspace/
+            mv Dockerfile.deb /tmp/workspace/
+            ls /tmp/workspace/
+      - store_artifacts:
+          path: /tmp/artifacts
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - Dockerfile.deb
+            - uDataPacketImport-*
+    # End steps
+  # End compile job
+  deploy-job:
+    docker:
+      - image: cimg/base:2022.09
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: "Create docker image"
+          command: |
+            cd /tmp/workspace
+            ls
+            # Figure out version from uDataPacketImport-MAJOR.MINOR.PATCH-Linux.deb
+            debfile=$(ls *Linux.deb)
+            version=$(echo ${debfile} | sed 's/uDataPacketImport-//g' | sed 's/-Linux.deb//g')
+            echo ${version}
+            docker build -t udatapacketimport:latest -t udatapacketimport:${version} -f ./Dockerfile.deb .
+      - run:
+          name: "Quay login"
+          command: |
+            docker login -u="${QUAY_ROBOT_USER}" -p="${QUAY_ROBOT_PASSWORD}" quay.io
+      - run:
+          name: "Upload docker image to quay"
+          command: |
+            docker tag udatapacketimport quay.io/uuss/udatapacketimport
+            docker push quay.io/uuss/udatapacketimport
+
+workflows:
+  compile-workflow: 
+    jobs:
+      - compile-job
+      - deploy-job:
+          requires:
+            - compile-job
+
