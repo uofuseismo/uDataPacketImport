@@ -6,10 +6,13 @@
 #include <optional>
 #include <memory>
 #include <set>
-namespace UDataPacketImport::GRPC
+namespace UDataPacketImport::GRPC::V1
 {
  class Packet;
  class StreamIdentifier;
+}
+namespace UDataPacketImport::GRPC
+{
  class StreamOptions;
 }
 namespace UDataPacketImport::GRPC
@@ -25,24 +28,24 @@ public:
     /// @brief Creates a stream from the given packet.
     /// @param[in,out] packet   The packet from which to create this stream.
     /// @param[in] options      The stream options.
-    Stream(UDataPacketImport::GRPC::Packet &&packet,
+    Stream(UDataPacketImport::GRPC::V1::Packet &&packet,
            const StreamOptions &options);
-    Stream(const UDataPacketImport::GRPC::Packet &packet,
+    Stream(const UDataPacketImport::GRPC::V1::Packet &packet,
            const StreamOptions &options);
 
 
     /// @result The stream identifier.
     [[nodiscard]] std::string getIdentifier() const noexcept;
     /// @result The stream identifier.
-    [[nodiscard]] UDataPacketImport::GRPC::StreamIdentifier getStreamIdentifier() const;
+    [[nodiscard]] UDataPacketImport::GRPC::V1::StreamIdentifier getStreamIdentifier() const;
 
     /// @brief Sets the latest packet.
-    void setLatestPacket(UDataPacketImport::GRPC::Packet &&packet);
+    void setLatestPacket(UDataPacketImport::GRPC::V1::Packet &&packet);
     /// @brief Sets the latest packet.
-    void setLatestPacket(const UDataPacketImport::GRPC::Packet &packet);
+    void setLatestPacket(const UDataPacketImport::GRPC::V1::Packet &packet);
 
     /// @brief Gets the next packet from the stream.
-    [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
+    [[nodiscard]] std::optional<UDataPacketImport::GRPC::V1::Packet>
          getNextPacket(uintptr_t contextAddress) const noexcept;
     /// @result Gets the current number of subscribers.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept;

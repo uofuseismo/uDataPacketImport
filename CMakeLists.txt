@@ -46,8 +46,8 @@ endif()
 configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
                ${CMAKE_SOURCE_DIR}/include/uDataPacketImport/version.hpp)
 set(LIBRARY_SRC
-    proto/v1/dataPacketBroadcast.proto
-    proto/v1/
+    proto/v1/broadcast.proto
+    proto/v1/packet.proto
     src/version.cpp
     src/streamIdentifier.cpp
     src/packet.cpp

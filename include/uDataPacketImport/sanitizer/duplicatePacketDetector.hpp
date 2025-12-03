@@ -7,7 +7,7 @@ namespace UDataPacketImport
 {
  class Packet;
 }
-namespace UDataPacketImport::GRPC
+namespace UDataPacketImport::GRPC::V1
 {
  class Packet;
 }
@@ -84,13 +84,13 @@ public:
 
     /// @param[in] packet   The packet to test.
     /// @result True indicates the data does not appear to be a duplicate.
-    [[nodiscard]] bool allow(const UDataPacketImport::GRPC::Packet &packet) const;
+    [[nodiscard]] bool allow(const UDataPacketImport::GRPC::V1::Packet &packet) const;
     /// @param[in] packet   The packet to test.
     /// @result True indicates the data does not appear to be a duplicate.
     [[nodiscard]] bool allow(const UDataPacketImport::Packet &packet) const;
 
     /// @result True indicates the data does not appear to be a duplicate.
-    [[nodiscard]] bool operator()(const UDataPacketImport::GRPC::Packet &packet) const;
+    [[nodiscard]] bool operator()(const UDataPacketImport::GRPC::V1::Packet &packet) const;
     /// @result True indicates the data does not appear to be a duplicate.
     [[nodiscard]] bool operator()(const UDataPacketImport::Packet &packet) const;
 

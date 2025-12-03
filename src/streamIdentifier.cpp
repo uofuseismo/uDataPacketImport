@@ -1,6 +1,6 @@
 #include <string>
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
 #include "isEmpty.hpp"
 
 using namespace UDataPacketImport;
@@ -54,7 +54,7 @@ StreamIdentifier::StreamIdentifier(
 
 /// Constructor
 StreamIdentifier::StreamIdentifier(
-    const UDataPacketImport::GRPC::StreamIdentifier &streamIdentifier) :
+    const UDataPacketImport::GRPC::V1::StreamIdentifier &streamIdentifier) :
     pImpl(std::make_unique<StreamIdentifierImpl> ())
 {
     StreamIdentifier identifier;
@@ -250,9 +250,10 @@ const std::string_view StreamIdentifier::toStringView() const
     return pImpl->mStringView;
 }
 
-UDataPacketImport::GRPC::StreamIdentifier StreamIdentifier::toProtobuf() const
+UDataPacketImport::GRPC::V1::StreamIdentifier 
+StreamIdentifier::toProtobuf() const
 {
-    UDataPacketImport::GRPC::StreamIdentifier result;
+    UDataPacketImport::GRPC::V1::StreamIdentifier result;
     result.set_network(std::move(getNetwork()));
     result.set_station(std::move(getStation()));
     result.set_channel(std::move(getChannel()));

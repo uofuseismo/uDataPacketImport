@@ -13,7 +13,7 @@
 #include "uDataPacketImport/sanitizer/duplicatePacketDetector.hpp"
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
 //#include "toName.hpp"
 
 using namespace UDataPacketImport::Sanitizer;
@@ -27,7 +27,8 @@ namespace
     return name;
 }
 
-[[nodiscard]] std::string toName(const UDataPacketImport::GRPC::Packet &packet)
+[[nodiscard]] 
+std::string toName(const UDataPacketImport::GRPC::V1::Packet &packet)
 {
     UDataPacketImport::StreamIdentifier identifier{packet.stream_identifier()};
     return identifier.toString();
@@ -59,7 +60,7 @@ public:
     }
 
     explicit DataPacketHeader(
-        const UDataPacketImport::GRPC::Packet &packet)
+        const UDataPacketImport::GRPC::V1::Packet &packet)
     {
         name = ::toName(packet);
 #ifndef NDEBUG
@@ -75,19 +76,22 @@ public:
             = static_cast<int64_t> (std::round(1000000/samplingRateDouble));
         auto dataType = packet.data_type();
         nSamples = 0;
-        if (dataType == UDataPacketImport::GRPC::Packet_DataType_Integer32)
+        if (dataType == UDataPacketImport::GRPC::V1::Packet_DataType_Integer32)
         { 
             nSamples = static_cast<int> (packet.data32i().size());
         }
-        else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Integer64)
+        else if (dataType ==
+                 UDataPacketImport::GRPC::V1::Packet_DataType_Integer64)
         {
             nSamples = static_cast<int> (packet.data64i().size());
         }
-        else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Double)
+        else if (dataType ==
+                 UDataPacketImport::GRPC::V1::Packet_DataType_Double)
         {   
             nSamples = static_cast<int> (packet.data64f().size());
         }   
-        else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Float)
+        else if (dataType ==
+                 UDataPacketImport::GRPC::V1::Packet_DataType_Float)
         {   
             nSamples = static_cast<int> (packet.data32f().size());
         }
@@ -552,7 +556,7 @@ DuplicatePacketDetector::~DuplicatePacketDetector() = default;
 
 /// Allow this packet?
 bool DuplicatePacketDetector::allow(
-    const UDataPacketImport::GRPC::Packet &packet) const
+    const UDataPacketImport::GRPC::V1::Packet &packet) const
 {
     // Construct the trace header for the circular buffer
     ::DataPacketHeader header;
@@ -628,7 +632,7 @@ bool DuplicatePacketDetector::allow(
 }
 
 bool DuplicatePacketDetector::operator()(
-    const UDataPacketImport::GRPC::Packet &packet) const
+    const UDataPacketImport::GRPC::V1::Packet &packet) const
 {
     return allow(packet);
 }

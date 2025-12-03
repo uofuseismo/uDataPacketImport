@@ -40,8 +40,7 @@
 #include "uDataPacketImport/grpc/subscriptionManager.hpp"
 #include "uDataPacketImport/grpc/subscriptionManagerOptions.hpp"
 #include "uDataPacketImport/grpc/streamOptions.hpp"
-#include "proto/dataPacketBroadcast.pb.h"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
 #include "getNow.hpp"
 #include "loadStringFromFile.hpp"
 #include "asynchronousWriter.hpp"
@@ -180,15 +179,15 @@ void cleanupMetrics()
 
 //class UDataPacketImport::GRPC::ServerImpl final
 class ServiceImpl final :
-    public UDataPacketImport::GRPC::SEEDLinkBroadcast::CallbackService
-    //public UDataPacketImport::GRPC::SEEDLinkBroadcast::Service
+    public UDataPacketImport::GRPC::V1::SEEDLinkBroadcast::CallbackService
+    //public UDataPacketImport::GRPC::V1::SEEDLinkBroadcast::Service
 {
 public:
     explicit ServiceImpl(const ::ProgramOptions &options) :
         mOptions(options)
     {
-        mImportQueue = std::make_unique<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet>> (mOptions.importQueueSize);
-        mBroadcastQueue = std::make_unique<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet>> (mOptions.importQueueSize);
+        mImportQueue = std::make_unique<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::V1::Packet>> (mOptions.importQueueSize);
+        mBroadcastQueue = std::make_unique<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::V1::Packet>> (mOptions.importQueueSize);
         mSEEDLinkClient
             = std::make_unique<UDataPacketImport::SEEDLink::Client>
               (mPacketBroadcastCallbackFunction,
@@ -234,7 +233,7 @@ public:
     }
 
     // Step 1: SEEDLink thread adds the packet to the queue
-    void importPacket(UDataPacketImport::GRPC::Packet &&packet)
+    void importPacket(UDataPacketImport::GRPC::V1::Packet &&packet)
     {
         auto approximateQueueSize = mImportQueue->size_approx();
         if (approximateQueueSize >= mOptions.importQueueSize)
@@ -258,7 +257,7 @@ public:
         std::chrono::milliseconds timeOut{15};
         while (mKeepRunning)
         {
-            UDataPacketImport::GRPC::Packet packet; 
+            UDataPacketImport::GRPC::V1::Packet packet; 
             if (mImportQueue->try_dequeue(packet))
             {
                 auto approximateQueueSize = mBroadcastQueue->size_approx();
@@ -315,7 +314,7 @@ public:
         std::chrono::milliseconds timeOut{15};
         while (mKeepRunning)
         {
-            UDataPacketImport::GRPC::Packet packet; 
+            UDataPacketImport::GRPC::V1::Packet packet; 
             if (mBroadcastQueue->try_dequeue(packet))
             {
                 try
@@ -335,10 +334,10 @@ public:
         }
     }
 
-    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::V1::Packet> *
     Subscribe(
         grpc::CallbackServerContext *context,
-        const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override 
+        const UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest *request) override 
     {
         return new ::AsynchronousWriterSubscribeToAll(
                       context,
@@ -376,15 +375,15 @@ public:
     ::ProgramOptions mOptions;
     std::unique_ptr<UDataPacketImport::SEEDLink::Client>
          mSEEDLinkClient{nullptr};
-    std::function<void(UDataPacketImport::GRPC::Packet &&)>
+    std::function<void(UDataPacketImport::GRPC::V1::Packet &&)>
         mPacketBroadcastCallbackFunction
     {
         std::bind(&::ServiceImpl::importPacket, this,
                   std::placeholders::_1)
     };
-    std::unique_ptr<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet>>
+    std::unique_ptr<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::V1::Packet>>
         mImportQueue{nullptr};
-    std::unique_ptr<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::Packet>>
+    std::unique_ptr<moodycamel::ReaderWriterQueue<UDataPacketImport::GRPC::V1::Packet>>
         mBroadcastQueue{nullptr};
     std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
         mSubscriptionManager{nullptr};

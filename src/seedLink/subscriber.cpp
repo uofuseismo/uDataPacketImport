@@ -13,8 +13,8 @@
 #include "uDataPacketImport/seedLink/subscriber.hpp"
 #include "uDataPacketImport/seedLink/subscriberOptions.hpp"
 #include "uDataPacketImport/packet.hpp"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
-#include "proto/dataPacketBroadcast.pb.h"
+#include "proto/v1/broadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
 #include "src/isEmpty.hpp"
 
 using namespace UDataPacketImport::SEEDLink;
@@ -22,7 +22,7 @@ using namespace UDataPacketImport::SEEDLink;
 namespace
 {
 
-bool matches(const UDataPacketImport::GRPC::StreamIdentifier &identifier,
+bool matches(const UDataPacketImport::GRPC::V1::StreamIdentifier &identifier,
              const std::string_view &networkSelector)
 {
     auto network = ::convertString(identifier.network());
@@ -42,7 +42,7 @@ bool matches(const UDataPacketImport::GRPC::StreamIdentifier &identifier,
     return false;
 }
 
-bool matches(const UDataPacketImport::GRPC::StreamIdentifier &identifier,
+bool matches(const UDataPacketImport::GRPC::V1::StreamIdentifier &identifier,
              const std::string_view &networkSelector,
              const std::string_view &stationSelector)
 {
@@ -73,7 +73,7 @@ bool matches(const UDataPacketImport::GRPC::StreamIdentifier &identifier,
     return false;
 }
 
-bool matches(const UDataPacketImport::GRPC::StreamIdentifier &identifier,
+bool matches(const UDataPacketImport::GRPC::V1::StreamIdentifier &identifier,
              const std::string_view &networkSelector,
              const std::string_view &stationSelector,
              const std::string_view &channelSelector)
@@ -105,7 +105,7 @@ bool matches(const UDataPacketImport::GRPC::StreamIdentifier &identifier,
     return false;
 }
 
-bool matches(const UDataPacketImport::GRPC::StreamIdentifier &identifier,
+bool matches(const UDataPacketImport::GRPC::V1::StreamIdentifier &identifier,
              const std::string_view &networkSelector,
              const std::string_view &stationSelector,
              const std::string_view &channelSelector,
@@ -153,7 +153,7 @@ class Subscriber::SubscriberImpl
 public:
     SubscriberImpl() = delete;
     SubscriberImpl(
-        const std::function<void (UDataPacketImport::GRPC::Packet &&)> &callback,
+        const std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> &callback,
         const SubscriberOptions &options) :
         mOptions(options),
         mGetPacketCallback(callback)
@@ -190,12 +190,12 @@ std::this_thread::sleep_for(std::chrono::seconds {1});
     {
 /*
         class Reader :
-            public grpc::ClientReadReactor<UDataPacketImport::GRPC::Packet>
+            public grpc::ClientReadReactor<UDataPacketImport::GRPC::V1::Packet>
         {
         public:
             Reader(UDataPacketImport::GRPC::SEEDLinkBroadcast::Stub *stub,
-                   const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest &request,
-                   const std::function<void (UDataPacketImport::GRPC::Packet &&)> &callback,
+                   const UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest &request,
+                   const std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> &callback,
                    std::atomic<bool> *keepRunning) :
                 mStub(stub),
                 mGetPacketCallback(callback),
@@ -252,8 +252,8 @@ spdlog::info("got one");
             UDataPacketImport::GRPC::SEEDLinkBroadcast::Stub *mStub{nullptr};
             grpc::ClientContext mContext;
             grpc::Status mStatus;
-            UDataPacketImport::GRPC::Packet mPacket; 
-            std::function<void (UDataPacketImport::GRPC::Packet &&)> mGetPacketCallback;
+            UDataPacketImport::GRPC::V1::Packet mPacket; 
+            std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> mGetPacketCallback;
             std::atomic<bool> *mKeepRunning{nullptr};
             bool mRPCCompleted{false};
         };
@@ -266,14 +266,14 @@ spdlog::info("got one");
             spdlog::info("Subscribing to SEEDLink gRPC broadcast");
             auto channel = ::createChannel(mOptions);
             auto stub
-                = UDataPacketImport::GRPC::SEEDLinkBroadcast::NewStub(channel);
+                = UDataPacketImport::GRPC::V1::SEEDLinkBroadcast::NewStub(channel);
             grpc::ClientContext context;
             context.set_wait_for_ready(false);
             //mConnected = true;
-            UDataPacketImport::GRPC::SubscribeToAllStreamsRequest request;
-            std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet>>
+            UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest request;
+            std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::V1::Packet>>
                 reader(stub->Subscribe(&context, request));
-            UDataPacketImport::GRPC::Packet packet;
+            UDataPacketImport::GRPC::V1::Packet packet;
             spdlog::debug("Beginning SEEDLink gRPC subscription loop");
             while (reader->Read(&packet))
             {
@@ -372,7 +372,7 @@ spdlog::info("got one");
         spdlog::info("SEEDLink subscriber thread leaving");
     }
     SubscriberOptions mOptions;
-    std::function<void (UDataPacketImport::GRPC::Packet &&)> mGetPacketCallback;
+    std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> mGetPacketCallback;
     std::atomic<bool> mKeepRunning{true};
     //std::atomic<bool> mConnected{false};
     bool mInitialized{false};
@@ -380,7 +380,7 @@ spdlog::info("got one");
 
 /// Constructor
 Subscriber::Subscriber(
-    const std::function<void (UDataPacketImport::GRPC::Packet &&)> &callback, 
+    const std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> &callback, 
     const SubscriberOptions &options) :
     //IClient(callback),
     pImpl(std::make_unique<SubscriberImpl> (callback, options))

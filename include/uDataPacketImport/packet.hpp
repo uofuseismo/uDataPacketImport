@@ -3,7 +3,7 @@
 #include <vector>
 #include <chrono>
 #include <memory>
-namespace UDataPacketImport::GRPC
+namespace UDataPacketImport::GRPC::V1
 {
   class Packet;
 }
@@ -41,7 +41,7 @@ public:
     /// @brief Constructs class from a protobuf message.
     /// @param[in] packet  A protobuf representation of hte packet from which
     ///                    to construct this class.
-    explicit Packet(const UDataPacketImport::GRPC::Packet &packet);
+    explicit Packet(const UDataPacketImport::GRPC::V1::Packet &packet);
     /// @}
 
     /// @brief Sets the stream identifier.
@@ -156,7 +156,7 @@ public:
 
     /// @result A protobuf representation of the data packet.
     /// @throws std::runtime_error if any required parameters are not set.
-    [[nodiscard]] GRPC::Packet toProtobuf() const;
+    [[nodiscard]] GRPC::V1::Packet toProtobuf() const;
 
     /// @name Destructors
     /// @{
@@ -185,6 +185,6 @@ private:
     class PacketImpl;
     std::unique_ptr<PacketImpl> pImpl;
 };
-[[nodiscard]] std::chrono::microseconds getEndTime(const UDataPacketImport::GRPC::Packet &packet);
+[[nodiscard]] std::chrono::microseconds getEndTime(const UDataPacketImport::GRPC::V1::Packet &packet);
 }
 #endif

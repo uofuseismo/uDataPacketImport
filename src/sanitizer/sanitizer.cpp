@@ -39,8 +39,7 @@
 #include "uDataPacketImport/sanitizer/duplicatePacketDetector.hpp"
 #include "uDataPacketImport/sanitizer/expiredPacketDetector.hpp"
 #include "uDataPacketImport/sanitizer/futurePacketDetector.hpp"
-#include "proto/dataPacketBroadcast.pb.h"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/broadcast.grpc.pb.h"
 #include "loadStringFromFile.hpp"
 #include "asynchronousWriter.hpp"
 
@@ -129,7 +128,7 @@ void cleanupMetrics()
 }
 
 class ServiceImpl :
-    public UDataPacketImport::GRPC::RealTimeBroadcast::CallbackService
+    public UDataPacketImport::GRPC::V1::RealTimeBroadcast::CallbackService
 {
 public:
     ServiceImpl(const ProgramOptions &options) :
@@ -206,7 +205,7 @@ blind a broadcast if very future data is encountered because of a GPS slip.
     }
 
     void checkAndPropagateInputPackets(
-        UDataPacketImport::GRPC::Packet &&packet)
+        UDataPacketImport::GRPC::V1::Packet &&packet)
     {
         bool allow{true};
         if (allow && mExpiredPacketDetector)
@@ -275,20 +274,21 @@ if (id.toString() == "WY.YNM.HHZ.01")
     grpc::ServerUnaryReactor*
     GetAvailableStreams(
         grpc::CallbackServerContext *context,
-        const UDataPacketImport::GRPC::AvailableStreamsRequest *request,
-        UDataPacketImport::GRPC::AvailableStreamsResponse *availableStreamsResponse)
+        const UDataPacketImport::GRPC::V1::AvailableStreamsRequest *request,
+        UDataPacketImport::GRPC::V1::AvailableStreamsResponse *availableStreamsResponse)
     {
         return new ::AsynchronousGetAvailableStreamsReactor(
                       context,
                       *request,
                       availableStreamsResponse,
-                      mBroadcastSubscriptionManager);
+                      mBroadcastSubscriptionManager,
+                      mOptions.grpcServerToken);
     }
 
-    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::V1::Packet> *
     Subscribe(
         grpc::CallbackServerContext *context,
-        const UDataPacketImport::GRPC::SubscriptionRequest *request) override
+        const UDataPacketImport::GRPC::V1::SubscriptionRequest *request) override
     {
         return new ::AsynchronousWriterSubscribe(
                       context,
@@ -299,10 +299,10 @@ if (id.toString() == "WY.YNM.HHZ.01")
                       mOptions.maximumNumberOfSubscribers);
     }   
 
-    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::V1::Packet> *
     SubscribeToAllStreams(
         grpc::CallbackServerContext *context,
-        const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override
+        const UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest *request) override
     {
         return new ::AsynchronousWriterSubscribeToAll(
                       context,
@@ -403,7 +403,7 @@ if (id.toString() == "WY.YNM.HHZ.01")
         mDuplicatePacketDetector{nullptr};
     std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
         mBroadcastSubscriptionManager{nullptr};
-    std::function<void (UDataPacketImport::GRPC::Packet &&)>
+    std::function<void (UDataPacketImport::GRPC::V1::Packet &&)>
         mAddPacketCallbackFunction
     {
         std::bind(&::ServiceImpl::checkAndPropagateInputPackets, this,

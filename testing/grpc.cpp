@@ -19,8 +19,7 @@
 #include "uDataPacketImport/grpc/stream.hpp"
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.pb.h"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/broadcast.grpc.pb.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
@@ -32,11 +31,11 @@
 
 namespace
 {
-std::vector<UDataPacketImport::GRPC::Packet> packetsToBroadcast;
-std::vector<UDataPacketImport::GRPC::Packet> packetsReceived;
+std::vector<UDataPacketImport::GRPC::V1::Packet> packetsToBroadcast;
+std::vector<UDataPacketImport::GRPC::V1::Packet> packetsReceived;
 
 [[nodiscard]] 
-UDataPacketImport::GRPC::Packet
+UDataPacketImport::GRPC::V1::Packet
     createPacket(const int number, const bool cwu)
 {
     UDataPacketImport::Packet packet;
@@ -61,7 +60,7 @@ UDataPacketImport::GRPC::Packet
     return packet.toProtobuf();
 }
 
-class ServiceImpl : public UDataPacketImport::GRPC::RealTimeBroadcast::CallbackService
+class ServiceImpl : public UDataPacketImport::GRPC::V1::RealTimeBroadcast::CallbackService
 {
 public:
     ServiceImpl()
@@ -100,18 +99,32 @@ public:
             }
         }
     }
-    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    grpc::ServerUnaryReactor*
+    GetAvailableStreams(
+        grpc::CallbackServerContext *context,
+        const UDataPacketImport::GRPC::V1::AvailableStreamsRequest *request,
+        UDataPacketImport::GRPC::V1::AvailableStreamsResponse *availableStreamsResponse)
+    {   
+        return new ::AsynchronousGetAvailableStreamsReactor(
+                      context,
+                      *request,
+                      availableStreamsResponse,
+                      mManager,
+                      apiKey);
+    }   
+
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::V1::Packet> *
     SubscribeToAllStreams(
         grpc::CallbackServerContext *context,
-        const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request) override 
+        const UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest *request) override 
     {
         return new ::AsynchronousWriterSubscribeToAll(
                       context, request, mManager, &mKeepRunning, apiKey, maxSubscribers);
     }
-    grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
+    grpc::ServerWriteReactor<UDataPacketImport::GRPC::V1::Packet> *
     Subscribe(
         grpc::CallbackServerContext *context,
-        const UDataPacketImport::GRPC::SubscriptionRequest *request) override 
+        const UDataPacketImport::GRPC::V1::SubscriptionRequest *request) override 
     {   
         return new ::AsynchronousWriterSubscribe(
                       context, request, mManager, &mKeepRunning, apiKey, maxSubscribers);
@@ -163,14 +176,14 @@ void subscribe(const bool doCancel = false,
     auto channel
         = grpc::CreateChannel(CLIENT_HOST,
                               grpc::InsecureChannelCredentials());
-    auto stub = UDataPacketImport::GRPC::RealTimeBroadcast::NewStub(channel);
+    auto stub = UDataPacketImport::GRPC::V1::RealTimeBroadcast::NewStub(channel);
     grpc::Status status;
     if (subscribeToAll)
     {
-        UDataPacketImport::GRPC::SubscribeToAllStreamsRequest request;
-        std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet> >
+        UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest request;
+        std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::V1::Packet> >
             reader( stub->SubscribeToAllStreams(&context, request) );
-        UDataPacketImport::GRPC::Packet packet;
+        UDataPacketImport::GRPC::V1::Packet packet;
         int iPacketsRead = 0;
         while (reader->Read(&packet)) 
         {
@@ -201,12 +214,12 @@ void subscribe(const bool doCancel = false,
     {
         auto doCWU = true;
         auto grpcIdentifier = createPacket(0, doCWU).stream_identifier(); // cwu
-        UDataPacketImport::GRPC::SubscriptionRequest request;
+        UDataPacketImport::GRPC::V1::SubscriptionRequest request;
         *request.add_streams() = grpcIdentifier;
-        std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet> >
+        std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::V1::Packet> >
             reader( stub->Subscribe(&context, request) );
         int iPacketsRead{0};
-        UDataPacketImport::GRPC::Packet packet;
+        UDataPacketImport::GRPC::V1::Packet packet;
         while (reader->Read(&packet))
         {
             //std::cout << "look at me right here e yes" << std::endl;
@@ -218,7 +231,7 @@ void subscribe(const bool doCancel = false,
     } 
 }
 
-void gotGRPCPacketCallback(UDataPacketImport::GRPC::Packet &&packet)
+void gotGRPCPacketCallback(UDataPacketImport::GRPC::V1::Packet &&packet)
 {
     std::cout << "in here" << std::endl;
     UDataPacketImport::StreamIdentifier identifier{packet.stream_identifier()};
@@ -237,7 +250,7 @@ identifiers.insert(identifier);
 assert(identifiers.size() == 1);
 options.setStreamSelections(identifiers);
 
-    std::function<void (UDataPacketImport::GRPC::Packet &&)>
+    std::function<void (UDataPacketImport::GRPC::V1::Packet &&)>
         gotPacketCallbackFunction
     {
         std::bind(&::gotGRPCPacketCallback, //this,
@@ -246,6 +259,10 @@ options.setStreamSelections(identifiers);
 
 std::cout << "init" << std::endl;
     UDataPacketImport::GRPC::Client client{gotPacketCallbackFunction, options};
+
+auto availableStreams = client.getAvailableStreams();
+std::cout << availableStreams.size() << " streams available" << std::endl;
+
 std::cout << "starting client" << std::endl;
     auto future = client.start(); 
     std::this_thread::sleep_for(std::chrono::seconds {2});
@@ -323,7 +340,7 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
     UDataPacketImport::GRPC::StreamOptions options;
     SECTION("Default")
     {
-        std::vector<UDataPacketImport::GRPC::Packet> localPackets;
+        std::vector<UDataPacketImport::GRPC::V1::Packet> localPackets;
         for (int i = 0; i < 3; ++i)
         {
             localPackets.push_back(::createPacket(i, true));
@@ -372,7 +389,7 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
 
     SECTION("Overflow queue")
     {
-        std::vector<UDataPacketImport::GRPC::Packet> localPackets;
+        std::vector<UDataPacketImport::GRPC::V1::Packet> localPackets;
         options.setMaximumQueueSize(8);
         for (int i = 0; i < 10; ++i)
         {
@@ -387,7 +404,7 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
             stream.setLatestPacket(packet);
         }
  
-        std::vector<UDataPacketImport::GRPC::Packet> packetsBack;
+        std::vector<UDataPacketImport::GRPC::V1::Packet> packetsBack;
         for (int i = 0; i < static_cast<int> (localPackets.size()); ++i)
         {
             auto packetBack = stream.getNextPacket(subscriberID); 
@@ -407,7 +424,7 @@ TEST_CASE("UDataPacketImport::GRPC::Stream")
     SECTION("Require ordered")
     {
         options.enableRequireOrdered();
-        std::vector<UDataPacketImport::GRPC::Packet> localPackets;
+        std::vector<UDataPacketImport::GRPC::V1::Packet> localPackets;
         for (int i = 3; i >= 0; --i)
         {
             localPackets.push_back(::createPacket(i, true));
@@ -464,7 +481,7 @@ TEST_CASE("UDataPacketImport::GRPC::SubscriptionManager",
     ServerImpl server;
     //auto t1 = std::thread(&::ServerImpl::run, &server); 
     auto t1 = std::thread(&::ServerImpl::run, &server);
-    std::this_thread::sleep_for(std::chrono::milliseconds {10});
+    std::this_thread::sleep_for(std::chrono::milliseconds {20});
 
     auto t2 = std::async(std::launch::async,
                          &::subscribeWithClient, false, true);

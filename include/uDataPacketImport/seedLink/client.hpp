@@ -3,7 +3,7 @@
 #include <uDataPacketImport/acquisition.hpp>
 #include <future>
 #include <memory>
-namespace UDataPacketImport::GRPC
+namespace UDataPacketImport::GRPC::V1
 {
  class Packet;
 }
@@ -25,7 +25,7 @@ public:
     /// @param[in] callback  The mechanism by which packets are propagated from
     ///                      SEEDLink to this application.
     /// @param[in] options   The SEEDLink client options.
-    Client(const std::function<void (UDataPacketImport::GRPC::Packet &&packet)> &callback,
+    Client(const std::function<void (UDataPacketImport::GRPC::V1::Packet &&packet)> &callback,
            const ClientOptions &options);
     /// @brief Connects to SEEDLink.
     //void connect() final;

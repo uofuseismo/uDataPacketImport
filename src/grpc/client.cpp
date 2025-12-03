@@ -7,8 +7,8 @@
 #include "uDataPacketImport/grpc/client.hpp"
 #include "uDataPacketImport/grpc/clientOptions.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.pb.h"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/broadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
 
 using namespace UDataPacketImport::GRPC;
 
@@ -77,11 +77,12 @@ std::shared_ptr<grpc::Channel>
      return grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
 }
 
-class Reader : public grpc::ClientReadReactor<UDataPacketImport::GRPC::Packet>
+class Reader :
+    public grpc::ClientReadReactor<UDataPacketImport::GRPC::V1::Packet>
 {
 public:
-    Reader(UDataPacketImport::GRPC::RealTimeBroadcast::Stub *stub,
-           const std::function<void (UDataPacketImport::GRPC::Packet &&)> &callback,
+    Reader(UDataPacketImport::GRPC::V1::RealTimeBroadcast::Stub *stub,
+           const std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> &callback,
            std::atomic<bool> *keepRunning,
            int *nReconnect) :
         mStub(stub),
@@ -98,7 +99,7 @@ public:
         StartCall(); // Activate RPC
     }
 
-    Reader(UDataPacketImport::GRPC::RealTimeBroadcast::Stub *stub,
+    Reader(UDataPacketImport::GRPC::V1::RealTimeBroadcast::Stub *stub,
            const std::function<void (UDataPacketImport::Packet &&)> &callback,
            std::atomic<bool> *keepRunning,
            int *nReconnect) :
@@ -116,8 +117,8 @@ public:
         StartCall(); // Activate RPC
     }   
 
-    Reader(UDataPacketImport::GRPC::RealTimeBroadcast::Stub *stub,
-           const std::function<void (UDataPacketImport::GRPC::Packet &&)> &callback,
+    Reader(UDataPacketImport::GRPC::V1::RealTimeBroadcast::Stub *stub,
+           const std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> &callback,
            std::atomic<bool> *keepRunning,
            int *nReconnect,
            const std::set<UDataPacketImport::StreamIdentifier> &identifiers) :
@@ -142,7 +143,7 @@ public:
         StartCall(); // Activate RPC
     }   
 
-    Reader(UDataPacketImport::GRPC::RealTimeBroadcast::Stub *stub,
+    Reader(UDataPacketImport::GRPC::V1::RealTimeBroadcast::Stub *stub,
            const std::function<void (UDataPacketImport::Packet &&)> &callback,
            std::atomic<bool> *keepRunning,
            int *nReconnect,
@@ -273,15 +274,15 @@ public:
     }
 
     std::mutex mMutex;
-    UDataPacketImport::GRPC::Packet mPacket;
-    std::unique_ptr<UDataPacketImport::GRPC::RealTimeBroadcast::Stub> mStub{nullptr};
-    std::function<void (UDataPacketImport::GRPC::Packet &&)> mGRPCPacketCallback;
+    UDataPacketImport::GRPC::V1::Packet mPacket;
+    std::unique_ptr<UDataPacketImport::GRPC::V1::RealTimeBroadcast::Stub> mStub{nullptr};
+    std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> mGRPCPacketCallback;
     std::function<void (UDataPacketImport::Packet &&)> mPacketCallback;
     std::condition_variable mConditionVariable;
     grpc::ClientContext mClientContext;
-    UDataPacketImport::GRPC::SubscribeToAllStreamsRequest
+    UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest
         mSubscribeToAllRequest;
-    UDataPacketImport::GRPC::SubscriptionRequest mSubscriptionRequest; 
+    UDataPacketImport::GRPC::V1::SubscriptionRequest mSubscriptionRequest; 
     grpc::Status mStatus;
     std::atomic<bool> *mKeepRunning{nullptr};
     int *mReconnect{nullptr};
@@ -290,6 +291,60 @@ public:
     bool mDone{false};
     std::atomic<bool> mSentCancel{false};
 };
+
+[[nodiscard]] std::set<UDataPacketImport::StreamIdentifier>
+    getAvailableStreams(const ClientOptions &options)
+{
+    auto channel = ::createChannel(options);
+    auto stub
+        = UDataPacketImport::GRPC::V1::RealTimeBroadcast::NewStub(channel);
+    grpc::ClientContext context;
+    constexpr std::chrono::seconds timeOut{3};
+    context.set_deadline(std::chrono::high_resolution_clock::now() + timeOut);
+    std::mutex mutex;
+    std::condition_variable conditionVariable;
+    UDataPacketImport::GRPC::V1::AvailableStreamsRequest request;
+    UDataPacketImport::GRPC::V1::AvailableStreamsResponse response;
+    grpc::Status status;
+    bool done{false};
+    stub->async()->GetAvailableStreams(
+         &context, &request, &response,
+         [&mutex, &conditionVariable, &done, &status]
+         (grpc::Status returnedStatus)
+    {
+        status = std::move(returnedStatus);
+        std::lock_guard<std::mutex> lock(mutex);
+        done = true;
+        conditionVariable.notify_one();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    while (!done)
+    {
+        conditionVariable.wait(lock);
+    }
+    // Take action
+    if (status.ok())
+    { 
+        spdlog::debug("Successfully determined there are " 
+                    + std::to_string(response.stream_identifiers().size())
+                    + " streams available");
+        std::set<UDataPacketImport::StreamIdentifier> result;
+        for (const auto &stream : response.stream_identifiers())
+        {
+            result.insert( UDataPacketImport::StreamIdentifier {stream} );
+        }
+        return result;
+    }
+    else
+    {
+        auto error = "Available streams request failed with "
+                   + std::to_string(static_cast<int> (status.error_code()))
+                   + ": " 
+                   + status.error_message();
+        throw std::runtime_error(error);
+    }
+}
+
 
 }
 
@@ -303,7 +358,7 @@ class Client::ClientImpl
 {
 public:
     ClientImpl(
-        const std::function<void (UDataPacketImport::GRPC::Packet &&)> &callback,
+        const std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> &callback,
         const ClientOptions &options) :
         mGRPCCallback(callback),
         mOptions(options),
@@ -414,17 +469,17 @@ public:
         {
             auto channel = ::createChannel(mOptions);
             auto stub
-                = UDataPacketImport::GRPC::RealTimeBroadcast::NewStub(channel);
+                = UDataPacketImport::GRPC::V1::RealTimeBroadcast::NewStub(channel);
             grpc::Status status;
             grpc::ClientContext context;
             context.set_wait_for_ready(false);
             if (!mOptions.getStreamSelections())
             {
                 spdlog::info("Subscribing to all streams");
-                UDataPacketImport::GRPC::SubscribeToAllStreamsRequest request;
-                std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet>>
+                UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest request;
+                std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::V1::Packet>>
                     reader(stub->SubscribeToAllStreams(&context, request));
-                UDataPacketImport::GRPC::Packet packet;
+                UDataPacketImport::GRPC::V1::Packet packet;
                 while (reader->Read(&packet))
                 {
                     if (!mKeepRunning)
@@ -457,8 +512,8 @@ public:
             }
             else
             {
-std::cout << "hey" << std::endl;
-                UDataPacketImport::GRPC::SubscriptionRequest request;
+                //std::cout << "hey" << std::endl;
+                UDataPacketImport::GRPC::V1::SubscriptionRequest request;
                 auto selections = mOptions.getStreamSelections();
 #ifndef NDEBUG
                 assert(selections);
@@ -470,9 +525,9 @@ std::cout << "hey" << std::endl;
                 spdlog::info("Subscribing to "
                            + std::to_string(request.streams_size())
                            + " streams");
-                std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::Packet>>
+                std::unique_ptr<grpc::ClientReader<UDataPacketImport::GRPC::V1::Packet>>
                     reader(stub->Subscribe(&context, request));
-                UDataPacketImport::GRPC::Packet packet;
+                UDataPacketImport::GRPC::V1::Packet packet;
                 while (reader->Read(&packet))
                 {
                     if (!mKeepRunning)
@@ -584,7 +639,7 @@ std::cout << "hey" << std::endl;
         }
         spdlog::info("Subscriber thread leaving");
     }
-    std::function<void (UDataPacketImport::GRPC::Packet &&) > mGRPCCallback;
+    std::function<void (UDataPacketImport::GRPC::V1::Packet &&) > mGRPCCallback;
     std::function<void (UDataPacketImport::Packet &&) > mPacketCallback;
     UDataPacketImport::GRPC::ClientOptions mOptions;
     std::atomic<bool> mKeepRunning{true};
@@ -595,7 +650,7 @@ std::cout << "hey" << std::endl;
 
 /// Constructor
 Client::Client(
-    const std::function<void (UDataPacketImport::GRPC::Packet &&)> &callback,
+    const std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> &callback,
     const ClientOptions &options) :
     pImpl(std::make_unique<ClientImpl> (callback, options))
 {
@@ -642,4 +697,15 @@ bool Client::isInitialized() const noexcept
 std::string Client::getType() const noexcept
 {
     return "gRPC";
+}
+
+/// Available streams
+std::set<UDataPacketImport::StreamIdentifier>
+Client::getAvailableStreams() const
+{
+    if (!isInitialized())
+    {
+        throw std::runtime_error("Client not initialized");
+    }
+    return ::getAvailableStreams(pImpl->mOptions);
 }

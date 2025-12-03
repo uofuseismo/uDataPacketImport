@@ -17,7 +17,7 @@
 #include "uDataPacketImport/streamIdentifier.hpp"
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/version.hpp"
-#include "proto/dataPacketBroadcast.pb.h"
+#include "proto/v1/packet.pb.h"
 
 using namespace UDataPacketImport::SEEDLink;
 
@@ -166,7 +166,7 @@ public:
     explicit ClientImpl(
         const std::function
         <
-            void (UDataPacketImport::GRPC::Packet &&)
+            void (UDataPacketImport::GRPC::V1::Packet &&)
         > &callback) :
         mAddPacketsCallback(callback)
     {
@@ -496,7 +496,7 @@ public:
     std::string mClientName{"uSEEDLinkDataPacketImporter"};
     std::function
     <
-        void(UDataPacketImport::GRPC::Packet &&)
+        void(UDataPacketImport::GRPC::V1::Packet &&)
     > mAddPacketsCallback;
     //std::thread mSEEDLinkReaderThread;
     SLCD *mSEEDLinkConnection{nullptr};
@@ -515,7 +515,7 @@ public:
 Client::Client(
     const std::function
     <
-        void (UDataPacketImport::GRPC::Packet &&)
+        void (UDataPacketImport::GRPC::V1::Packet &&)
     > &callback,
     const ClientOptions &options) :
     pImpl(std::make_unique<ClientImpl> (callback))

@@ -3,7 +3,7 @@
 #include <functional>
 #include <memory>
 #include <uDataPacketImport/acquisition.hpp>
-namespace UDataPacketImport::GRPC
+namespace UDataPacketImport::GRPC::V1
 {
  class Packet;
 }
@@ -22,7 +22,7 @@ class Subscriber final : public UDataPacketImport::IAcquisition
 {
 public:
     /// @brief Constructs the subscriber from the given options.
-    Subscriber(const std::function<void (UDataPacketImport::GRPC::Packet &&)> &callback,
+    Subscriber(const std::function<void (UDataPacketImport::GRPC::V1::Packet &&)> &callback,
                const SubscriberOptions &options);
 
     /// @brief Initialized?

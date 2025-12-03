@@ -10,8 +10,7 @@
 #include <spdlog/spdlog.h>
 #include "uDataPacketImport/grpc/subscriptionManager.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.pb.h"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/broadcast.grpc.pb.h"
 
 namespace
 {
@@ -36,12 +35,12 @@ bool validateClient(const grpc::CallbackServerContext *context,
 }
 
 class AsynchronousWriterSubscribeToAll :
-    public grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet>
+    public grpc::ServerWriteReactor<UDataPacketImport::GRPC::V1::Packet>
 {
 public:
     AsynchronousWriterSubscribeToAll(
          grpc::CallbackServerContext *context,
-         const UDataPacketImport::GRPC::SubscribeToAllStreamsRequest *request,
+         const UDataPacketImport::GRPC::V1::SubscribeToAllStreamsRequest *request,
          std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
              &subscriptionManager,
          std::atomic<bool> *keepRunning,
@@ -228,7 +227,7 @@ private:
     grpc::CallbackServerContext *mContext{nullptr};
     std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager> mManager{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
-    std::queue<UDataPacketImport::GRPC::Packet> mPacketsQueue;
+    std::queue<UDataPacketImport::GRPC::V1::Packet> mPacketsQueue;
     std::string mPeer;
     std::chrono::milliseconds mTimeOut{20};
     size_t mMaximumQueueSize{2048};
@@ -239,12 +238,12 @@ private:
 //----------------------------------------------------------------------------//
 
 class AsynchronousWriterSubscribe :
-    public grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet>
+    public grpc::ServerWriteReactor<UDataPacketImport::GRPC::V1::Packet>
 {
 public:
     AsynchronousWriterSubscribe(
          grpc::CallbackServerContext *context,
-         const UDataPacketImport::GRPC::SubscriptionRequest *request,
+         const UDataPacketImport::GRPC::V1::SubscriptionRequest *request,
          std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
              &subscriptionManager,
          std::atomic<bool> *keepRunning,
@@ -458,10 +457,10 @@ private:
         Finish(grpc::Status::OK);
     }
     grpc::CallbackServerContext *mContext{nullptr};
-    UDataPacketImport::GRPC::SubscriptionRequest mSubscriptionRequest;
+    UDataPacketImport::GRPC::V1::SubscriptionRequest mSubscriptionRequest;
     std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager> mManager{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
-    std::queue<UDataPacketImport::GRPC::Packet> mPacketsQueue;
+    std::queue<UDataPacketImport::GRPC::V1::Packet> mPacketsQueue;
     std::set<UDataPacketImport::StreamIdentifier> mStreamIdentifiers;
     std::string mPeer;
     std::chrono::milliseconds mTimeOut{20};
@@ -477,10 +476,11 @@ class AsynchronousGetAvailableStreamsReactor : public grpc::ServerUnaryReactor
 public:
     AsynchronousGetAvailableStreamsReactor(
        grpc::CallbackServerContext* context,
-       const UDataPacketImport::GRPC::AvailableStreamsRequest &request,
-       UDataPacketImport::GRPC::AvailableStreamsResponse *availableStreamsResponse,
+       const UDataPacketImport::GRPC::V1::AvailableStreamsRequest &request,
+       UDataPacketImport::GRPC::V1::AvailableStreamsResponse *availableStreamsResponse,
        std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
-          &subscriptionManager)
+          &subscriptionManager,
+       const std::string &accessToken = "")
     {
         // Authenticate
         auto peer = context->peer();
@@ -503,9 +503,21 @@ Client must provide access token in x-custom-auth-token header field
                                 "Server-side error"};
             Finish(status);
         }
+        if (availableStreamsResponse == nullptr)
+        {
+            spdlog::critical("Available streams response is null");
+            grpc::Status status{grpc::StatusCode::INTERNAL,
+                                "Server-side error"};
+            Finish(status);
+        }
         try
         {
             auto availableStreams = subscriptionManager->getAvailableStreams(); 
+            for (auto &stream : availableStreams)
+            {
+                *availableStreamsResponse->add_stream_identifiers()
+                     = std::move(stream);
+            }
         }
         catch (const std::exception &e)
         {

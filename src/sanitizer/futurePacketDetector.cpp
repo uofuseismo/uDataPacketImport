@@ -7,7 +7,7 @@
 #include "uDataPacketImport/sanitizer/futurePacketDetector.hpp"
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
 #include "src/getNow.hpp"
 //#include "toName.hpp"
 
@@ -22,7 +22,8 @@ namespace
     return name;
 }
 
-[[nodiscard]] std::string toName(const UDataPacketImport::GRPC::Packet &packet)
+[[nodiscard]] 
+std::string toName(const UDataPacketImport::GRPC::V1::Packet &packet)
 {
     UDataPacketImport::StreamIdentifier identifier{packet.stream_identifier()};
     return identifier.toString();
@@ -145,7 +146,7 @@ public:
         {
             packetEndTime = packet.getEndTime(); // Throws
         }
-        else if constexpr (std::is_same<UDataPacketImport::GRPC::Packet, U>::value)
+        else if constexpr (std::is_same<UDataPacketImport::GRPC::V1::Packet, U>::value)
         {
             packetEndTime = UDataPacketImport::getEndTime(packet); // Throws
         }
@@ -300,13 +301,13 @@ bool FuturePacketDetector::allow(
 }
 
 bool FuturePacketDetector::allow(
-    const UDataPacketImport::GRPC::Packet &packet) const
+    const UDataPacketImport::GRPC::V1::Packet &packet) const
 {
     return pImpl->allow(packet);
 }
 
 bool FuturePacketDetector::operator()(
-    const UDataPacketImport::GRPC::Packet &packet) const
+    const UDataPacketImport::GRPC::V1::Packet &packet) const
 {
     return allow(packet);
 }

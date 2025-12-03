@@ -3,7 +3,7 @@
 #include <string_view>
 #include <string>
 #include <memory>
-namespace UDataPacketImport::GRPC
+namespace UDataPacketImport::GRPC::V1
 {
  class StreamIdentifier;
 }
@@ -33,7 +33,7 @@ public:
                      const std::string_view &locationCode);
     /// @brief Constructs from a gRPC protobuf.
     /// @param[in] identifier  The protobuf stream identifier.
-    explicit StreamIdentifier(const UDataPacketImport::GRPC::StreamIdentifier &identifier);
+    explicit StreamIdentifier(const UDataPacketImport::GRPC::V1::StreamIdentifier &identifier);
 
     /// @brief Sets the network code.
     /// @param[in] network  The network code.
@@ -89,7 +89,7 @@ public:
     [[deprecated]] [[nodiscard]] const std::string_view toStringView() const;
 
     /// @result Converts the class to a protobuf.
-    [[nodiscard]] UDataPacketImport::GRPC::StreamIdentifier toProtobuf() const;
+    [[nodiscard]] UDataPacketImport::GRPC::V1::StreamIdentifier toProtobuf() const;
 
     /// @name Destructors
     /// @{

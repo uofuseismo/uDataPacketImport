@@ -2,13 +2,18 @@
 #define UDATA_PACKET_IMPORT_GRPC_SUBSCRIPTION_MANAGER_HPP
 #include <grpcpp/grpcpp.h>
 #include <memory>
+namespace UDataPacketImport::GRPC::V1
+{
+  class Packet;
+  class StreamIdentifier;
+  class SubscriptionRequest;
+}
 namespace UDataPacketImport
 {
   class StreamIdentifier;
 }
 namespace UDataPacketImport::GRPC
 {
-  class Packet;
   class StreamOptions;
   class UnsubscribeFromAllStreamsResponse;
   class UnsubscribeResponse;
@@ -40,7 +45,7 @@ public:
     //void subscribe(grpc::ServerContext *context,
     //               const SubscriptionRequest &request);
     void subscribe(grpc::CallbackServerContext *context,
-                   const SubscriptionRequest &request);
+                   const UDataPacketImport::GRPC::V1::SubscriptionRequest &request);
 
     /// @brief Allows a client to unsubscribe from all streams. 
     //void unsubscribeFromAll(grpc::ServerContext *context);
@@ -68,13 +73,13 @@ public:
                      const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers);
 
     /// TODO Need to manage subscriptions better 
-    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::V1::Packet>
         getNextPackets(grpc::CallbackServerContext *context,
                        const std::set<UDataPacketImport::StreamIdentifier> &streamIdentifiers) const;
 
-    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::V1::Packet>
         getNextPacketsFromAllSubscriptions(grpc::CallbackServerContext *context) const;
-    //[[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+    //[[nodiscard]] std::vector<UDataPacketImport::GRPC::V1::Packet>
     //    getNextPacketsFromAllSubscriptions(grpc::ServerContext *context) const;
     /// @}
 
@@ -82,10 +87,10 @@ public:
     /// @{
 
     /// @brief Used by a publisher to add a packet.
-    void addPacket(const UDataPacketImport::GRPC::Packet &packet);
-    void addPacket(UDataPacketImport::GRPC::Packet &&packet);
+    void addPacket(const UDataPacketImport::GRPC::V1::Packet &packet);
+    void addPacket(UDataPacketImport::GRPC::V1::Packet &&packet);
 
-    [[nodiscard]] std::set<UDataPacketImport::StreamIdentifier> getAvailableStreams() const;
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::V1::StreamIdentifier> getAvailableStreams() const;
 
     /// @}
 

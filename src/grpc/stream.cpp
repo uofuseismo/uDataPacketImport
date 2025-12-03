@@ -7,7 +7,7 @@
 #include "uDataPacketImport/grpc/streamOptions.hpp"
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
 #include "src/getNow.hpp"
 
 using namespace UDataPacketImport::GRPC;
@@ -22,12 +22,12 @@ public:
         mRequiredOrdered{options.requireOrdered()}
     {
     }
-    void insert(const UDataPacketImport::GRPC::Packet &packetIn)
+    void insert(const UDataPacketImport::GRPC::V1::Packet &packetIn)
     {
         auto packet = packetIn;
         insert(std::move(packet));
     } 
-    void insert(UDataPacketImport::GRPC::Packet &&packet)
+    void insert(UDataPacketImport::GRPC::V1::Packet &&packet)
     {
         bool inserted{false};
         {
@@ -61,16 +61,16 @@ public:
         return mPacketsRead.load();
     }
     */
-    [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet> popFront()
+    [[nodiscard]] std::optional<UDataPacketImport::GRPC::V1::Packet> popFront()
     {
-        std::optional<UDataPacketImport::GRPC::Packet> result{std::nullopt};
+        std::optional<UDataPacketImport::GRPC::V1::Packet> result{std::nullopt};
         {
         std::lock_guard<std::mutex> lock(mMutex);
         if (mQueue.empty()){return std::nullopt;}
         result
             = std::move
               (
-                 std::optional<UDataPacketImport::GRPC::Packet> 
+                 std::optional<UDataPacketImport::GRPC::V1::Packet> 
                  (
                     std::move(mQueue.front())
                  )
@@ -81,7 +81,7 @@ public:
         return result;
     }
     mutable std::mutex mMutex;
-    std::queue<UDataPacketImport::GRPC::Packet> mQueue;
+    std::queue<UDataPacketImport::GRPC::V1::Packet> mQueue;
     std::chrono::microseconds mLatestSample
     {
         std::numeric_limits<int64_t>::lowest()
@@ -97,7 +97,7 @@ class Stream::StreamImpl
 {
 public:
     // Constructor
-    StreamImpl(UDataPacketImport::GRPC::Packet &&packet,
+    StreamImpl(UDataPacketImport::GRPC::V1::Packet &&packet,
                const UDataPacketImport::GRPC::StreamOptions &options) :
         mStreamOptions(options)
     {
@@ -126,7 +126,7 @@ public:
     }
     // Set the latest packet
     [[nodiscard]]
-    bool setLatestPacket(UDataPacketImport::GRPC::Packet &&packetIn)
+    bool setLatestPacket(UDataPacketImport::GRPC::V1::Packet &&packetIn)
     {
         UDataPacketImport::StreamIdentifier
             identifier{packetIn.stream_identifier()};
@@ -252,10 +252,10 @@ public:
         }
     }
     // Convenience function for subscriber to get next packet 
-    [[nodiscard]] std::optional<UDataPacketImport::GRPC::Packet>
+    [[nodiscard]] std::optional<UDataPacketImport::GRPC::V1::Packet>
         getNextPacket(const uintptr_t contextAddress) const noexcept
     {
-        UDataPacketImport::GRPC::Packet packet;
+        UDataPacketImport::GRPC::V1::Packet packet;
         bool notFound{false};
         {
         std::lock_guard<std::mutex> lock(mMutex);
@@ -305,7 +305,7 @@ public:
         std::unique_ptr<::PacketQueue> 
     > mSubscribers;
     StreamOptions mStreamOptions;
-    UDataPacketImport::GRPC::StreamIdentifier mIdentifier;
+    UDataPacketImport::GRPC::V1::StreamIdentifier mIdentifier;
     std::string mIdentifierString;
     std::string_view mIdentifierStringView;
     size_t mSubscriberQueueSize{8};
@@ -313,17 +313,17 @@ public:
 };
 
 /// Constructor
-Stream::Stream(UDataPacketImport::GRPC::Packet &&packet,
+Stream::Stream(UDataPacketImport::GRPC::V1::Packet &&packet,
                const UDataPacketImport::GRPC::StreamOptions &options) :
     pImpl(std::make_unique<StreamImpl> (std::move(packet), options))
 {
 }
 
-Stream::Stream(const UDataPacketImport::GRPC::Packet &packet,
+Stream::Stream(const UDataPacketImport::GRPC::V1::Packet &packet,
                const UDataPacketImport::GRPC::StreamOptions &options) :
     pImpl(std::make_unique<StreamImpl> 
     (
-        std::move(UDataPacketImport::GRPC::Packet {packet}), options)
+        std::move(UDataPacketImport::GRPC::V1::Packet {packet}), options)
     )
 {
 }
@@ -333,7 +333,7 @@ Stream::Stream(const UDataPacketImport::GRPC::Packet &packet,
 Stream::~Stream() = default;
 
 /// Get identifier
-[[nodiscard]] UDataPacketImport::GRPC::StreamIdentifier
+[[nodiscard]] UDataPacketImport::GRPC::V1::StreamIdentifier
     Stream::getStreamIdentifier() const
 {
     return pImpl->mIdentifier;
@@ -345,13 +345,14 @@ Stream::~Stream() = default;
 }
 
 /// Sets the latest packet
-void Stream::setLatestPacket(const UDataPacketImport::GRPC::Packet &packetIn)
+void Stream::setLatestPacket(
+    const UDataPacketImport::GRPC::V1::Packet &packetIn)
 {
-    UDataPacketImport::GRPC::Packet packet{packetIn};
+    UDataPacketImport::GRPC::V1::Packet packet{packetIn};
     setLatestPacket(std::move(packet));
 }
 
-void Stream::setLatestPacket(UDataPacketImport::GRPC::Packet &&packet)
+void Stream::setLatestPacket(UDataPacketImport::GRPC::V1::Packet &&packet)
 {
     if (!pImpl->setLatestPacket(std::move(packet)))
     {
@@ -377,7 +378,7 @@ void Stream::subscribe(grpc::CallbackServerContext *context)
 }
 */
 
-std::optional<UDataPacketImport::GRPC::Packet>
+std::optional<UDataPacketImport::GRPC::V1::Packet>
     Stream::getNextPacket(const uintptr_t contextAddress) const noexcept
 {
     return pImpl->getNextPacket(contextAddress);

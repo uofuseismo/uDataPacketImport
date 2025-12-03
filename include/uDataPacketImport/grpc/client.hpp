@@ -1,9 +1,14 @@
 #ifndef UDATA_PACKET_IMPORT_GRPC_CLIENT_HPP
 #define UDATA_PACKET_IMPORT_GRPC_CLIENT_HPP
+#include <set>
 #include <memory>
 #include <functional>
 #include <uDataPacketImport/packet.hpp>
 #include <uDataPacketImport/acquisition.hpp>
+namespace UDataPacketImport
+{
+ class StreamIdentifier;
+}
 namespace UDataPacketImport::GRPC
 {
  class ClientOptions;
@@ -19,7 +24,7 @@ public:
     ///                      low-level protobuf which is slightly faster but
     ///                      more inconvenient for use in an applicaiton.
     /// @param[in] options   The client options.
-    Client(const std::function<void (UDataPacketImport::GRPC::Packet &&packet)> &callback,
+    Client(const std::function<void (UDataPacketImport::GRPC::V1::Packet &&packet)> &callback,
            const ClientOptions &options);
     /// @brief Defines the gRPC packet reader client.
     /// @param[in] callback  The mechanism by which packets are propagated from
@@ -30,6 +35,8 @@ public:
     /// @param[in] options   The client options.
     Client(const std::function<void (UDataPacketImport::Packet &&packet)> &callback,
            const ClientOptions &options);
+    /// @result The streams available at this endpoint.
+    [[nodiscard]] std::set<UDataPacketImport::StreamIdentifier> getAvailableStreams() const;
     /// @brief Starts the import thread.
     /// @result A future so as to catch exceptions.
     [[nodiscard]] std::future<void> start() final;

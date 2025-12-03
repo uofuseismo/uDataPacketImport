@@ -8,7 +8,7 @@
 #endif
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
 #include "isEmpty.hpp"
 
 #define MESSAGE_TYPE "US8::MessageFormats::Broadcasts::DataPacket"
@@ -156,7 +156,7 @@ Packet::Packet(Packet &&packet) noexcept
 }
 
 /// Construct from protobuf
-Packet::Packet(const UDataPacketImport::GRPC::Packet &packet)
+Packet::Packet(const UDataPacketImport::GRPC::V1::Packet &packet)
 {
     Packet temp;
 
@@ -166,7 +166,7 @@ Packet::Packet(const UDataPacketImport::GRPC::Packet &packet)
     temp.setStartTime(std::chrono::microseconds {packet.start_time_mus()});
 
     auto dataType = packet.data_type();
-    if (dataType == UDataPacketImport::GRPC::Packet_DataType_Integer32 &&
+    if (dataType == UDataPacketImport::GRPC::V1::Packet_DataType_Integer32 &&
         packet.data32i().size() > 0)
     {
         std::vector<int> work;
@@ -174,21 +174,23 @@ Packet::Packet(const UDataPacketImport::GRPC::Packet &packet)
         for (const auto &v : packet.data32i()){work.push_back(v);}
         temp.setData(std::move(work));
     }
-    else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Double &&
+    else if (dataType == UDataPacketImport::GRPC::V1::Packet_DataType_Double &&
              packet.data64f().size() > 0)
     {
         std::vector<double> work;
         for (const auto &v : packet.data64f()){work.push_back(v);}
         temp.setData(std::move(work));
     }
-    else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Integer64 &&
+    else if (dataType ==
+             UDataPacketImport::GRPC::V1::Packet_DataType_Integer64 &&
              packet.data64i().size())
     {
         std::vector<int64_t> work;
         for (const auto &v : packet.data64i()){work.push_back(v);}
         temp.setData(std::move(work));
     }
-    else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Float &&
+    else if (dataType ==
+             UDataPacketImport::GRPC::V1::Packet_DataType_Float &&
              packet.data32f().size())
     {
         std::vector<float> work;
@@ -437,20 +439,20 @@ Packet::DataType Packet::getDataType() const noexcept
 }
 
 /// Protobuf
-UDataPacketImport::GRPC::Packet Packet::toProtobuf() const
+UDataPacketImport::GRPC::V1::Packet Packet::toProtobuf() const
 {
     if (!hasStreamIdentifier()){throw std::runtime_error("Identifier not set");}
-    UDataPacketImport::GRPC::StreamIdentifier
+    UDataPacketImport::GRPC::V1::StreamIdentifier
         identifier(std::move(pImpl->mIdentifier.toProtobuf()));
 
-    UDataPacketImport::GRPC::Packet packet;
+    UDataPacketImport::GRPC::V1::Packet packet;
     *packet.mutable_stream_identifier() = std::move(identifier);
  
     packet.set_start_time_mus(getStartTime().count());
     packet.set_sampling_rate(getSamplingRate());
 
     packet.set_data_type(
-        UDataPacketImport::GRPC::Packet_DataType_Unknown);
+        UDataPacketImport::GRPC::V1::Packet_DataType_Unknown);
 
     auto nSamples = getNumberOfSamples();
     if (nSamples > 0)
@@ -459,28 +461,28 @@ UDataPacketImport::GRPC::Packet Packet::toProtobuf() const
         if (dataType == Packet::DataType::Integer32)
         {
             packet.set_data_type(
-                UDataPacketImport::GRPC::Packet_DataType_Integer32);
+                UDataPacketImport::GRPC::V1::Packet_DataType_Integer32);
             *packet.mutable_data32i() = {pImpl->mInteger32Data.begin(),
                                          pImpl->mInteger32Data.end()};
         }
         else if (dataType == Packet::DataType::Double)
         {
             packet.set_data_type(
-                UDataPacketImport::GRPC::Packet_DataType_Double);
+                UDataPacketImport::GRPC::V1::Packet_DataType_Double);
             *packet.mutable_data64f() = {pImpl->mDoubleData.begin(),
                                          pImpl->mDoubleData.end()};
         }
         else if (dataType == Packet::DataType::Float)
         {
             packet.set_data_type(
-                UDataPacketImport::GRPC::Packet_DataType_Float);
+                UDataPacketImport::GRPC::V1::Packet_DataType_Float);
             *packet.mutable_data32f() = {pImpl->mFloatData.begin(),
                                          pImpl->mFloatData.end()};
         }
         else if (dataType == Packet::DataType::Integer64)
         {
             packet.set_data_type(
-                UDataPacketImport::GRPC::Packet_DataType_Integer64);
+                UDataPacketImport::GRPC::V1::Packet_DataType_Integer64);
             *packet.mutable_data64i() = {pImpl->mInteger64Data.begin(),
                                          pImpl->mInteger64Data.end()};
         }
@@ -490,7 +492,7 @@ UDataPacketImport::GRPC::Packet Packet::toProtobuf() const
             assert(false);
 #endif
             packet.set_data_type(
-                UDataPacketImport::GRPC::Packet_DataType_Unknown);
+                UDataPacketImport::GRPC::V1::Packet_DataType_Unknown);
         } 
     }
 
@@ -498,7 +500,7 @@ UDataPacketImport::GRPC::Packet Packet::toProtobuf() const
 }
 
 std::chrono::microseconds UDataPacketImport::getEndTime(
-    const UDataPacketImport::GRPC::Packet &packet)
+    const UDataPacketImport::GRPC::V1::Packet &packet)
 {
     auto startTimeMuS = packet.start_time_mus();
     auto samplingRate = packet.sampling_rate();
@@ -510,19 +512,19 @@ std::chrono::microseconds UDataPacketImport::getEndTime(
         = static_cast<int64_t> (std::round(1000000/samplingRate));
     auto dataType = packet.data_type();
     int nSamples{0};
-    if (dataType == UDataPacketImport::GRPC::Packet_DataType_Integer32)
+    if (dataType == UDataPacketImport::GRPC::V1::Packet_DataType_Integer32)
     {
         nSamples = static_cast<int> (packet.data32i().size());
     }
-    else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Integer64)
+    else if (dataType == UDataPacketImport::GRPC::V1::Packet_DataType_Integer64)
     {
         nSamples = static_cast<int> (packet.data64i().size());
     }
-    else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Double)
+    else if (dataType == UDataPacketImport::GRPC::V1::Packet_DataType_Double)
     {
         nSamples = static_cast<int> (packet.data64f().size());
     }
-    else if (dataType == UDataPacketImport::GRPC::Packet_DataType_Float)
+    else if (dataType == UDataPacketImport::GRPC::V1::Packet_DataType_Float)
     {
         nSamples = static_cast<int> (packet.data32f().size());
     }

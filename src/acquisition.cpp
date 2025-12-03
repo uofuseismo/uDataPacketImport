@@ -1,7 +1,6 @@
 #include <vector>
 #include "uDataPacketImport/acquisition.hpp"
 #include "uDataPacketImport/packet.hpp"
-#include "proto/dataPacketBroadcast.pb.h"
 
 using namespace UDataPacketImport;
 

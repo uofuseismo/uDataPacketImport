@@ -12,7 +12,8 @@
 #include "uDataPacketImport/grpc/stream.hpp"
 #include "uDataPacketImport/grpc/streamOptions.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.grpc.pb.h"
+#include "proto/v1/packet.pb.h"
+#include "proto/v1/broadcast.pb.h"
 #include "uDataPacketImport/packet.hpp"
 
 using namespace UDataPacketImport::GRPC;
@@ -20,7 +21,7 @@ using namespace UDataPacketImport::GRPC;
 namespace
 {
 std::set<UDataPacketImport::StreamIdentifier> 
-    toSet(const UDataPacketImport::GRPC::SubscriptionRequest &request)
+    toSet(const UDataPacketImport::GRPC::V1::SubscriptionRequest &request)
 {
     std::set<UDataPacketImport::StreamIdentifier> identifiers;
     for (const auto &grpcStreamIdentifier : request.streams())
@@ -46,7 +47,7 @@ public:
     {
         mStreamOptions = mOptions.getStreamOptions();
     }
-    void setLatestPacket(UDataPacketImport::GRPC::Packet &&packet)
+    void setLatestPacket(UDataPacketImport::GRPC::V1::Packet &&packet)
     {
         bool addedPacket{false};
         bool createdStream{false};
@@ -495,6 +496,7 @@ public:
     }   
     */
     /// Asynchronous unsubscribe
+    /*
     void unsubscribe(grpc::CallbackServerContext *context,
                      const UnsubscribeRequest &request)
     {
@@ -515,6 +517,7 @@ public:
         mPendingCallbackServerContextSubscriptions.erase(context); 
         }
     }
+    */
     /// Synchronous unsubscribe
     /*
     void unsubscribe(grpc::ServerContext *context,
@@ -539,11 +542,11 @@ public:
     }
     */
     /// Get next packet for a particular context
-    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::V1::Packet>
         getNextPackets(const uintptr_t contextAddress,
                        const std::set<UDataPacketImport::StreamIdentifier> &identifiers) const noexcept
     {
-        std::vector<UDataPacketImport::GRPC::Packet> result;
+        std::vector<UDataPacketImport::GRPC::V1::Packet> result;
         result.reserve(32);
         {
         std::lock_guard<std::mutex> lock(mMutex);
@@ -573,11 +576,11 @@ public:
         return result;
     }
     /// Get next packet
-    [[nodiscard]] std::vector<UDataPacketImport::GRPC::Packet>
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::V1::Packet>
         getNextPacketsFromAllSubscriptions(
             const uintptr_t contextAddress) const noexcept
     {
-        std::vector<UDataPacketImport::GRPC::Packet> result;
+        std::vector<UDataPacketImport::GRPC::V1::Packet> result;
         result.reserve(32);
         {
         std::lock_guard<std::mutex> lock(mMutex);
@@ -640,9 +643,9 @@ public:
         }
     }
 
-    [[nodiscard]] std::vector<UDataPacketImport::StreamIdentifier> getAvailableStreams() const
+    [[nodiscard]] std::vector<UDataPacketImport::GRPC::V1::StreamIdentifier> getAvailableStreams() const
     {
-        std::vector<UDataPacketImport::StreamIdentifier> identifiers;
+        std::vector<UDataPacketImport::GRPC::V1::StreamIdentifier> identifiers;
         {
         std::lock_guard<std::mutex> lock(mMutex);
         identifiers.reserve(mStreamsMap.size());
@@ -650,7 +653,7 @@ public:
         {
             try
             {
-                identifiers.insert( mStreamsMap->second->getStreamIdentifier() );
+                identifiers.push_back( stream.second->getStreamIdentifier() );
             }
             catch (const std::exception &e)
             {
@@ -740,7 +743,7 @@ void SubscriptionManager::subscribe(
 
 void SubscriptionManager::subscribe(
     grpc::CallbackServerContext *context,
-    const UDataPacketImport::GRPC::SubscriptionRequest &request)
+    const UDataPacketImport::GRPC::V1::SubscriptionRequest &request)
 {
     auto identifiers = ::toSet(request); // Throws
     pImpl->subscribe(context, identifiers);
@@ -828,13 +831,13 @@ void SubscriptionManager::unsubscribeFromAll(
 
 /// Add a packet
 void SubscriptionManager::addPacket(
-    const UDataPacketImport::GRPC::Packet &packet)
+    const UDataPacketImport::GRPC::V1::Packet &packet)
 {
-    addPacket(std::move(UDataPacketImport::GRPC::Packet {packet}));
+    addPacket(std::move(UDataPacketImport::GRPC::V1::Packet {packet}));
 }
 
 void SubscriptionManager::addPacket(
-    UDataPacketImport::GRPC::Packet &&packet)
+    UDataPacketImport::GRPC::V1::Packet &&packet)
 {
     // Won't get far without this
     if (!packet.has_stream_identifier())
@@ -848,7 +851,7 @@ void SubscriptionManager::addPacket(
     pImpl->setLatestPacket(std::move(packet));
 }
 
-std::vector<UDataPacketImport::GRPC::Packet>
+std::vector<UDataPacketImport::GRPC::V1::Packet>
     SubscriptionManager::getNextPacketsFromAllSubscriptions(
     grpc::CallbackServerContext *context) const
 {
@@ -860,7 +863,7 @@ std::vector<UDataPacketImport::GRPC::Packet>
     return pImpl->getNextPacketsFromAllSubscriptions(contextAddress);
 }
 
-std::vector<UDataPacketImport::GRPC::Packet>
+std::vector<UDataPacketImport::GRPC::V1::Packet>
     SubscriptionManager::getNextPackets(
     grpc::CallbackServerContext *context,
     const std::set<UDataPacketImport::StreamIdentifier> &subscriptions) const
@@ -874,7 +877,7 @@ std::vector<UDataPacketImport::GRPC::Packet>
 }    
 
 /*
-std::vector<UDataPacketImport::GRPC::Packet>
+std::vector<UDataPacketImport::GRPC::V1::Packet>
     SubscriptionManager::getNextPacketsFromAllSubscriptions(
     grpc::ServerContext *context) const
 {       
@@ -900,14 +903,42 @@ int SubscriptionManager::getNumberOfSubscribers() const noexcept
 }
 
 /// Gets all the current streams
-std::set<UDataPacket::StreamIdentifier>
+std::vector<UDataPacketImport::GRPC::V1::StreamIdentifier>
     SubscriptionManager::getAvailableStreams() const
 {
-    auto availableStreams = pImpl->getAvailableStreams();
-    std::set<UDataPacket::StreamIdentifier> result;
-    for (const auto &s : availableStreams)
+    auto result = pImpl->getAvailableStreams();
+#ifndef NDEBUG
+    auto availableStreams = result;
+    result.clear();
+    for (auto &stream : availableStreams)
     {
-        result.insert( UDataPacketImport::StreamIdentifier {s} );
+        auto id = stream.network() + "."
+                + stream.station() + "."
+                + stream.channel() + "."
+                + stream.location_code();
+        bool exists{false};
+        for (const auto &existingStream : result)
+        {
+            auto existingID = existingStream.network() + "."
+                            + existingStream.station() + "."
+                            + existingStream.channel() + "."
+                            + existingStream.location_code();
+            if (id == existingID)
+            {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists)
+        {
+            result.push_back(std::move(stream));
+        }
+        else
+        {
+            spdlog::critical("Duplicate stream found from map");
+            assert(false);
+        }
     }
+#endif
     return result;
 }

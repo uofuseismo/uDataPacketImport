@@ -7,7 +7,7 @@
 #include <limits>
 #include "uDataPacketImport/packet.hpp"
 #include "uDataPacketImport/streamIdentifier.hpp"
-#include "proto/dataPacketBroadcast.pb.h"
+#include "proto/v1/packet.pb.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
@@ -36,7 +36,7 @@ TEST_CASE("UDataPacketImport::StreamIdentifier", "[streamIdentifier]")
 
     SECTION("From Protobuf")
     {
-        UDataPacketImport::GRPC::StreamIdentifier proto;
+        UDataPacketImport::GRPC::V1::StreamIdentifier proto;
         proto.set_network(network);
         proto.set_station(station);
         proto.set_channel(channel);

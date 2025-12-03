@@ -7,7 +7,7 @@ namespace UDataPacketImport
 {
  class Packet;
 }
-namespace UDataPacketImport::GRPC
+namespace UDataPacketImport::GRPC::V1
 {
  class Packet;
 }
@@ -77,13 +77,13 @@ public:
 
     /// @param[in] packet  The protobuf representation of a data packet.
     /// @result True indicates the data packet does not appear to have any expired data.
-    [[nodiscard]] bool allow(const UDataPacketImport::GRPC::Packet &packet) const;
+    [[nodiscard]] bool allow(const UDataPacketImport::GRPC::V1::Packet &packet) const;
     /// @param[in] packet  The client library representation of a data packet.
     /// @result True indicates the data packet does not appear to have any expired data.
     [[nodiscard]] bool allow(const UDataPacketImport::Packet &packet) const;
 
     /// @result True indicates the data packet does not appear to have any expired data.
-    [[nodiscard]] bool operator()(const UDataPacketImport::GRPC::Packet &packet) const;
+    [[nodiscard]] bool operator()(const UDataPacketImport::GRPC::V1::Packet &packet) const;
     /// @result True indicates the data packet does not appear to have any expired data.
     [[nodiscard]] bool operator()(const UDataPacketImport::Packet &packet) const;
 
