@@ -2,7 +2,7 @@
 # Usage: podman build -t umdbuilder:latest -f Dockerfile.u24
 #   or   buildah bud -t umdbuilder:latest -f Dockerfile.u24
 # 
-FROM quay.io/uuss/us8base:latest as udpibuilder
+FROM quay.io/uuss/udpibase:latest as udpibuilder
 
 RUN cd /home/ubuntu &&\
     if [ -d uDataPacketImport ]; then rm -rf uDataPacketImport; fi &&\

@@ -272,6 +272,19 @@ if (id.toString() == "WY.YNM.HHZ.01")
         }
     }
 
+    grpc::ServerUnaryReactor*
+    GetAvailableStreams(
+        grpc::CallbackServerContext *context,
+        const UDataPacketImport::GRPC::AvailableStreamsRequest *request,
+        UDataPacketImport::GRPC::AvailableStreamsResponse *availableStreamsResponse)
+    {
+        return new ::AsynchronousGetAvailableStreamsReactor(
+                      context,
+                      *request,
+                      availableStreamsResponse,
+                      mBroadcastSubscriptionManager);
+    }
+
     grpc::ServerWriteReactor<UDataPacketImport::GRPC::Packet> *
     Subscribe(
         grpc::CallbackServerContext *context,

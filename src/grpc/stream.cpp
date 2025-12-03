@@ -333,6 +333,12 @@ Stream::Stream(const UDataPacketImport::GRPC::Packet &packet,
 Stream::~Stream() = default;
 
 /// Get identifier
+[[nodiscard]] UDataPacketImport::GRPC::StreamIdentifier
+    Stream::getStreamIdentifier() const
+{
+    return pImpl->mIdentifier;
+}
+
 [[nodiscard]] std::string Stream::getIdentifier() const noexcept
 {
     return pImpl->mIdentifierString;

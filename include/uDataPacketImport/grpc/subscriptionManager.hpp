@@ -85,6 +85,8 @@ public:
     void addPacket(const UDataPacketImport::GRPC::Packet &packet);
     void addPacket(UDataPacketImport::GRPC::Packet &&packet);
 
+    [[nodiscard]] std::set<UDataPacketImport::StreamIdentifier> getAvailableStreams() const;
+
     /// @}
 
     /// @result The number of streams.

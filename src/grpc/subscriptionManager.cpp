@@ -640,6 +640,27 @@ public:
         }
     }
 
+    [[nodiscard]] std::vector<UDataPacketImport::StreamIdentifier> getAvailableStreams() const
+    {
+        std::vector<UDataPacketImport::StreamIdentifier> identifiers;
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        identifiers.reserve(mStreamsMap.size());
+        for (const auto &stream : mStreamsMap)
+        {
+            try
+            {
+                identifiers.insert( mStreamsMap->second->getStreamIdentifier() );
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::warn(e.what());
+            }
+        }
+        }
+        return identifiers;
+    }
+
     mutable std::mutex mMutex;
     SubscriptionManagerOptions mOptions;
     StreamOptions mStreamOptions;
@@ -876,4 +897,17 @@ void SubscriptionManager::unsubscribeAll()
 int SubscriptionManager::getNumberOfSubscribers() const noexcept
 {
     return pImpl->getNumberOfSubscribers();    
+}
+
+/// Gets all the current streams
+std::set<UDataPacket::StreamIdentifier>
+    SubscriptionManager::getAvailableStreams() const
+{
+    auto availableStreams = pImpl->getAvailableStreams();
+    std::set<UDataPacket::StreamIdentifier> result;
+    for (const auto &s : availableStreams)
+    {
+        result.insert( UDataPacketImport::StreamIdentifier {s} );
+    }
+    return result;
 }

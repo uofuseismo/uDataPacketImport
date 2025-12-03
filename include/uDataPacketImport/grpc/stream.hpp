@@ -9,6 +9,7 @@
 namespace UDataPacketImport::GRPC
 {
  class Packet;
+ class StreamIdentifier;
  class StreamOptions;
 }
 namespace UDataPacketImport::GRPC
@@ -32,6 +33,8 @@ public:
 
     /// @result The stream identifier.
     [[nodiscard]] std::string getIdentifier() const noexcept;
+    /// @result The stream identifier.
+    [[nodiscard]] UDataPacketImport::GRPC::StreamIdentifier getStreamIdentifier() const;
 
     /// @brief Sets the latest packet.
     void setLatestPacket(UDataPacketImport::GRPC::Packet &&packet);

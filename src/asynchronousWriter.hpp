@@ -470,5 +470,59 @@ private:
     bool mWriteInProgress{false};
 };
 
+///--------------------------------------------------------------------------///
+
+class AsynchronousGetAvailableStreamsReactor : public grpc::ServerUnaryReactor
+{
+public:
+    AsynchronousGetAvailableStreamsReactor(
+       grpc::CallbackServerContext* context,
+       const UDataPacketImport::GRPC::AvailableStreamsRequest &request,
+       UDataPacketImport::GRPC::AvailableStreamsResponse *availableStreamsResponse,
+       std::shared_ptr<UDataPacketImport::GRPC::SubscriptionManager>
+          &subscriptionManager)
+    {
+        // Authenticate
+        auto peer = context->peer();
+        if (!accessToken.empty())
+        {
+            if (!::validateClient(context, accessToken, peer))
+            {
+                spdlog::info(peer + " rejected");
+                grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
+R"""(
+Client must provide access token in x-custom-auth-token header field
+)"""};
+                Finish(status);
+            }
+        }
+        if (subscriptionManager == nullptr)
+        {
+            spdlog::critical("Subscription manager is null");
+            grpc::Status status{grpc::StatusCode::INTERNAL,
+                                "Server-side error"};
+            Finish(status);
+        }
+        try
+        {
+            auto availableStreams = subscriptionManager->getAvailableStreams(); 
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::warn(e.what());
+            grpc::Status status{grpc::StatusCode::INTERNAL,
+                                "Server-side error"};
+            Finish(status);
+        }
+        Finish(grpc::Status::OK);
+    }
+private:
+    void OnDone() override 
+    {
+        spdlog::debug("Get all available stations RPC completed");
+        delete this;
+    }
+};
+
 }
 #endif
